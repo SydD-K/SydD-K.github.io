@@ -1,4 +1,10 @@
-## opencv C++ 实现 Eigenface
+---
+layout: post
+title: opencv C++ 实现 Eigenface
+subtitle: Each post also has a subtitle
+categories: markdown
+tags: [CV]
+---
 
 ##### 实验原理
 

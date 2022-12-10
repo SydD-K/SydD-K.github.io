@@ -1,0 +1,1248 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.3.1">Jekyll</generator><link href="/jekyll-theme-yat/feed.xml" rel="self" type="application/atom+xml" /><link href="/jekyll-theme-yat/" rel="alternate" type="text/html" /><updated>2022-12-10T05:08:12+00:00</updated><id>/jekyll-theme-yat/feed.xml</id><title type="html">Syd’s blog</title><subtitle>Write an awesome description for your new site here. You can edit this line in _config.yml. It will appear in your document head meta (for Google search results) and in your feed.xml site description.</subtitle><author><name>GitHub User</name></author><entry><title type="html">opencv C++ 实现 Eigenface</title><link href="/jekyll-theme-yat/markdown/2022/12/09/cv-eigenface.html" rel="alternate" type="text/html" title="opencv C++ 实现 Eigenface" /><published>2022-12-09T00:00:00+00:00</published><updated>2022-12-09T00:00:00+00:00</updated><id>/jekyll-theme-yat/markdown/2022/12/09/cv-eigenface</id><content type="html" xml:base="/jekyll-theme-yat/markdown/2022/12/09/cv-eigenface.html"><![CDATA[<h3 id="实验原理">实验原理</h3>
+
+<p>假设脸均为行向量</p>
+
+<p>对中心化后的样本矩阵（一行为一个样本脸）进行 SVD，得到的右奇异矩阵为一个行与列个数均与图像像素数相同的正交矩阵，一行为一个特征脸，选择其对应奇异值最大的 $p$ 行作为特征脸，组成特征脸矩阵 $A$</p>
+
+<p>将人脸样本 $f$ 映射特征脸空间时，则有 $y_f=fA^T$ ，其中 $y_f$ 则为 $f$ 降维后的结果</p>
+
+<p>若需要进行重构，则有 $f_{re}=y_fA$ ，其中 $f_{re}$ 为重构之后的人脸，也为一个行向量</p>
+
+<p>通过图像在特征脸空间的投影间的欧氏距离大小判断二者的相似程度
+$$
+Distance_k=||Ω−Ω_k||^2
+$$
+其中 $\Omega$ 与 $\Omega_k$ 分别表示两个人脸图像，本实验中 $\Omega$ 为测试集中一个人脸样本的投影结果，$\Omega_k$ 为训练集中的人脸样本投影结果，应将 $k$ 由 $0$ 遍历至 <code class="language-plaintext highlighter-rouge">training_set.size()</code> 找出使 $Distance_k$ 最小的 $k$</p>
+
+<h4 id="本次实验的简单流程是">本次实验的简单流程是</h4>
+
+<ol>
+  <li>读取人脸数据集，将自己的 10 张照片加入其中之后，将其分为训练集和测试集</li>
+  <li>进行预处理，直方图均衡化，中心化（零均值化）</li>
+  <li>训练，求出训练集的特征人脸</li>
+  <li>将训练集的人脸与测试集的人脸均通过特征人脸映射到特征脸空间后，比较二者的欧氏距离，训练集中与每个测试集中的人脸欧氏距离最小的人脸被认为与测试集中对应的人脸是同一个人</li>
+  <li>将一个人脸通过特征人脸映射到特征脸空间后，再通过得到的结果重构出原先的人脸</li>
+</ol>
+
+<h3 id="实验步骤">实验步骤</h3>
+
+<h4 id="读入图片">读入图片</h4>
+
+<p>首先读入AT&amp;T图片文件，全部存入由 <code class="language-plaintext highlighter-rouge">Mat</code> 矩阵组成的数组 <code class="language-plaintext highlighter-rouge">faces</code> 中，同时进行眼睛对齐。实现眼睛对齐的方法即为仿射变换，读取每张图像的同时也读取其眼睛的位置，以第一张图像的眼睛位置为基准，通过仿射变换的方式将每张图像的双眼对齐。由于仿射变换需要三角形作为基准，因此我选择了每张图像两眼中点偏上 20 像素的位置作为基准，这样取相对位置可以尽可能减小仿射变换导致的人脸的大幅度倾斜与变形</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">int</span> <span class="nf">main</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="n">Mat</span> <span class="n">faces</span><span class="p">[</span><span class="n">FACNUM</span> <span class="o">*</span> <span class="n">PICNUM</span><span class="p">];</span>
+    <span class="n">vector</span><span class="o">&lt;</span><span class="n">Mat</span><span class="o">&gt;</span> <span class="n">training_set</span><span class="p">;</span>
+    <span class="n">vector</span><span class="o">&lt;</span><span class="n">Mat</span><span class="o">&gt;</span> <span class="n">test_set</span><span class="p">;</span>
+    <span class="n">vector</span><span class="o">&lt;</span><span class="n">Mat</span><span class="o">&gt;</span> <span class="n">reconstruct_set</span><span class="p">;</span>
+    <span class="n">Point</span> <span class="n">eye1</span><span class="p">;</span>
+    <span class="n">Point</span> <span class="n">eye2</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">size</span> <span class="o">=</span> <span class="n">FACNUM</span> <span class="o">*</span> <span class="n">PICNUM</span><span class="p">;</span>
+    <span class="c1">//read in the faces</span>
+    <span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">"Reading in the faces and preprocessing..."</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+    <span class="n">string</span> <span class="n">path</span> <span class="o">=</span> <span class="s">"att-face/"</span><span class="p">;</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">FACNUM</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>   <span class="c1">//40 faces</span>
+        <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="n">PICNUM</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>   <span class="c1">//10 pics for each face</span>
+            <span class="n">string</span> <span class="n">facenum</span> <span class="o">=</span> <span class="s">""</span><span class="p">;</span>
+            <span class="kt">int</span> <span class="n">temp</span><span class="p">;</span>
+            <span class="n">temp</span> <span class="o">=</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+            <span class="k">while</span><span class="p">(</span><span class="n">temp</span><span class="o">!=</span><span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+                <span class="kt">char</span> <span class="n">newnum</span> <span class="o">=</span> <span class="sc">'0'</span> <span class="o">+</span> <span class="n">temp</span> <span class="o">%</span> <span class="mi">10</span><span class="p">;</span>
+                <span class="n">facenum</span> <span class="o">=</span> <span class="n">newnum</span> <span class="o">+</span> <span class="n">facenum</span><span class="p">;</span>
+                <span class="n">temp</span> <span class="o">=</span> <span class="n">temp</span> <span class="o">/</span> <span class="mi">10</span><span class="p">;</span>
+            <span class="p">}</span>
+            <span class="n">string</span> <span class="n">picnum</span><span class="p">;</span>
+            <span class="k">if</span><span class="p">(</span><span class="n">j</span> <span class="o">==</span> <span class="mi">9</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">picnum</span> <span class="o">=</span> <span class="s">"10"</span><span class="p">;</span>
+            <span class="p">}</span>
+            <span class="k">else</span> <span class="p">{</span>
+                <span class="n">picnum</span> <span class="o">=</span> <span class="sc">'1'</span> <span class="o">+</span> <span class="n">j</span><span class="p">;</span>
+            <span class="p">}</span>
+            <span class="c1">//cout&lt;&lt;path + "s" + facenum + "/" + picnum + ".pgm"&lt;&lt;endl;</span>
+            <span class="n">faces</span><span class="p">[</span><span class="n">i</span><span class="o">*</span><span class="n">PICNUM</span> <span class="o">+</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">imread</span><span class="p">(</span><span class="n">path</span> <span class="o">+</span> <span class="s">"s"</span> <span class="o">+</span> <span class="n">facenum</span> <span class="o">+</span> <span class="s">"/"</span> <span class="o">+</span> <span class="n">picnum</span> <span class="o">+</span> <span class="s">".pgm"</span><span class="p">);</span>
+            <span class="c1">// imshow("1", faces[i]);</span>
+            <span class="c1">// waitKey(50);</span>
+            <span class="c1">// cout&lt;&lt;i&lt;&lt;", "&lt;&lt;(int)j&lt;&lt;endl;</span>
+
+            <span class="c1">//align the eyes</span>
+            <span class="n">string</span> <span class="n">fpath</span> <span class="o">=</span> <span class="s">"ATT-eye-location/"</span><span class="p">;</span>
+            <span class="n">FileStorage</span> <span class="n">fs</span><span class="p">(</span><span class="n">fpath</span> <span class="o">+</span> <span class="s">"s"</span> <span class="o">+</span> <span class="n">facenum</span> <span class="o">+</span> <span class="s">"/"</span> <span class="o">+</span> <span class="n">picnum</span> <span class="o">+</span> <span class="s">".json"</span><span class="p">,</span> <span class="n">FileStorage</span><span class="o">::</span><span class="n">READ</span><span class="p">);</span>
+            <span class="k">if</span><span class="p">(</span><span class="n">i</span> <span class="o">==</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span> <span class="n">j</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">fs</span><span class="p">[</span><span class="s">"centre_of_left_eye"</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">eye1</span><span class="p">;</span>
+                <span class="n">fs</span><span class="p">[</span><span class="s">"centre_of_right_eye"</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">eye2</span><span class="p">;</span>
+            <span class="p">}</span>
+            <span class="k">else</span> <span class="p">{</span>
+                <span class="n">Point</span> <span class="n">temp1</span><span class="p">,</span> <span class="n">temp2</span><span class="p">;</span>
+                <span class="n">fs</span><span class="p">[</span><span class="s">"centre_of_left_eye"</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">temp1</span><span class="p">;</span>
+                <span class="n">fs</span><span class="p">[</span><span class="s">"centre_of_right_eye"</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">temp2</span><span class="p">;</span>
+                <span class="n">Point2f</span> <span class="n">src</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{(</span><span class="n">temp1</span> <span class="o">+</span> <span class="n">temp2</span><span class="p">)</span><span class="o">/</span><span class="mi">2</span> <span class="o">-</span> <span class="n">Point</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">20</span><span class="p">),</span> <span class="n">temp1</span><span class="p">,</span> <span class="n">temp2</span><span class="p">};</span>
+                <span class="n">Point2f</span> <span class="n">dst</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{(</span><span class="n">eye1</span> <span class="o">+</span> <span class="n">eye2</span><span class="p">)</span><span class="o">/</span><span class="mi">2</span> <span class="o">-</span> <span class="n">Point</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">20</span><span class="p">),</span> <span class="n">eye1</span><span class="p">,</span> <span class="n">eye2</span><span class="p">};</span>
+                <span class="n">Mat</span> <span class="n">affineMat</span> <span class="o">=</span> <span class="n">getAffineTransform</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="n">dst</span><span class="p">);</span>
+                <span class="n">warpAffine</span><span class="p">(</span><span class="n">faces</span><span class="p">[</span><span class="n">i</span><span class="o">*</span><span class="n">PICNUM</span> <span class="o">+</span> <span class="n">j</span><span class="p">],</span> <span class="n">faces</span><span class="p">[</span><span class="n">i</span><span class="o">*</span><span class="n">PICNUM</span> <span class="o">+</span> <span class="n">j</span><span class="p">],</span> <span class="n">affineMat</span><span class="p">,</span> <span class="n">Size</span><span class="p">(</span><span class="n">faces</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">cols</span><span class="p">,</span> <span class="n">faces</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">rows</span><span class="p">),</span> <span class="mi">1</span><span class="p">,</span> <span class="n">BORDER_REFLECT</span><span class="p">);</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="c1">// cout&lt;&lt;faces[1].channels()&lt;&lt;endl;    //3 channels</span>
+    <span class="c1">// cout&lt;&lt;faces[1].type()&lt;&lt;endl;    //type is 16</span>
+    <span class="n">rows</span> <span class="o">=</span> <span class="n">faces</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">rows</span><span class="p">;</span>
+    <span class="n">cols</span> <span class="o">=</span> <span class="n">faces</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">cols</span><span class="p">;</span>
+    <span class="c1">// cout&lt;&lt;rows&lt;&lt;endl;   //112</span>
+    <span class="c1">// cout&lt;&lt;cols&lt;&lt;endl;   //92</span>
+</code></pre></div></div>
+
+<p>接下来建立 <code class="language-plaintext highlighter-rouge">training_set</code> ，<code class="language-plaintext highlighter-rouge">test_set</code> 与 <code class="language-plaintext highlighter-rouge">reconstruct_set</code></p>
+
+<p>这这三个集合均使用 C++ STL 容器 vector 来实现，以方便维护。选出每个人脸的前 5 张图像作为训练集，后 5 张图像作为测试集（包括自己的人脸图像）。使用自己的人脸图像作为重构集。由于读入的人脸图像为分辨率为 $1440\times960$ 的图像，且除人脸外图像中还存在其他的非必要元素，因此为了与给出的 AT&amp;T 数据集中的人脸图像一致，先用 <code class="language-plaintext highlighter-rouge">colRange()</code> 与 <code class="language-plaintext highlighter-rouge">rowRange()</code> 将图像裁切至基本只包含人脸且长宽比与 AT&amp;T 数据集中的图像长宽比相同，为 $96:112$ ，然后使用 <code class="language-plaintext highlighter-rouge">resize()</code> 将图像分辨率变为 $96\times112$ ，与 AT&amp;T 数据集中图像分辨率一致。注意此处使用 <code class="language-plaintext highlighter-rouge">resize()</code> 缩放图像时，若使用默认参数给出的插值算法得到的图像锯齿将极为严重，这里手动选择 <code class="language-plaintext highlighter-rouge">INTER_AREA</code> 算法进行插值。这里由于没有实现检测眼睛中心位置的功能，因此为了检测自己人脸图像的眼睛位置，将处理后的图像输出为 <code class="language-plaintext highlighter-rouge">jpg</code> 格式图像，并在 windows 系统的”画图“中打开，找到每张图眼睛的中心位置并记录在 <code class="language-plaintext highlighter-rouge">pos.json</code> 文件中。完成后重新运行程序，即可从 <code class="language-plaintext highlighter-rouge">pos.json</code> 中读取眼睛位置数据，使用与上述相同的方法进行对齐，基准仍为 AT&amp;T 数据集第一张图像中眼睛的位置。然后将自己人脸的图像前 5 张加入训练集中，后 5 张加入测试集中，10 张自己的人脸图像作为重构集。</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="c1">//construct training set</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">40</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span><span class="c1">// use the first 25 faces, each face has its first 5 pics</span>
+        <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="mi">5</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span>
+        <span class="n">training_set</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">faces</span><span class="p">[</span><span class="n">i</span> <span class="o">*</span> <span class="n">PICNUM</span> <span class="o">+</span> <span class="n">j</span><span class="p">].</span><span class="n">clone</span><span class="p">());</span>
+    <span class="p">}</span>
+
+    <span class="c1">//construct test set</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">40</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span><span class="c1">// use the first 25 faces, each face has its last 5 pics</span>
+        <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">5</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span>
+        <span class="n">test_set</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">faces</span><span class="p">[</span><span class="n">i</span> <span class="o">*</span> <span class="n">PICNUM</span> <span class="o">+</span> <span class="n">j</span><span class="p">].</span><span class="n">clone</span><span class="p">());</span>
+    <span class="p">}</span>
+
+    <span class="c1">//construct reconstruct set</span>
+    <span class="n">FileStorage</span> <span class="n">fs</span><span class="p">(</span><span class="s">"pos.json"</span><span class="p">,</span> <span class="n">FileStorage</span><span class="o">::</span><span class="n">READ</span><span class="p">);</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">string</span> <span class="n">path</span> <span class="o">=</span> <span class="s">""</span><span class="p">;</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">path</span> <span class="o">+</span> <span class="p">(</span><span class="kt">char</span><span class="p">)(</span><span class="sc">'0'</span> <span class="o">+</span> <span class="n">j</span><span class="p">)</span> <span class="o">+</span> <span class="s">".jpg"</span><span class="p">;</span>
+        <span class="n">Mat</span> <span class="n">myface</span> <span class="o">=</span> <span class="n">imread</span><span class="p">(</span><span class="n">path</span><span class="p">);</span>  <span class="c1">// each image is cols == 1440, rows == 960</span>
+        <span class="n">myface</span> <span class="o">=</span> <span class="n">myface</span><span class="p">.</span><span class="n">colRange</span><span class="p">(</span><span class="mi">398</span><span class="p">,</span> <span class="mi">1042</span><span class="p">);</span>
+        <span class="n">myface</span> <span class="o">=</span> <span class="n">myface</span><span class="p">.</span><span class="n">rowRange</span><span class="p">(</span><span class="mi">88</span><span class="p">,</span> <span class="mi">872</span><span class="p">);</span>
+        <span class="n">resize</span><span class="p">(</span><span class="n">myface</span><span class="p">,</span> <span class="n">myface</span><span class="p">,</span> <span class="n">Size</span><span class="p">(</span><span class="mi">92</span><span class="p">,</span> <span class="mi">112</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">INTER_AREA</span><span class="p">);</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="s">""</span><span class="p">;</span>
+        <span class="n">imwrite</span><span class="p">(</span><span class="n">path</span> <span class="o">+</span> <span class="p">(</span><span class="kt">char</span><span class="p">)(</span><span class="sc">'0'</span> <span class="o">+</span> <span class="n">j</span><span class="p">)</span> <span class="o">+</span> <span class="s">"d.jpg"</span><span class="p">,</span> <span class="n">myface</span><span class="p">);</span>
+        <span class="c1">//align the eyes</span>
+        <span class="n">Point</span> <span class="n">temp1</span><span class="p">,</span> <span class="n">temp2</span><span class="p">;</span>
+        <span class="n">string</span> <span class="n">label_l</span> <span class="o">=</span> <span class="s">""</span><span class="p">,</span> <span class="n">label_r</span> <span class="o">=</span> <span class="s">""</span><span class="p">;</span>
+        <span class="n">label_l</span> <span class="o">=</span> <span class="n">label_l</span> <span class="o">+</span> <span class="p">(</span><span class="kt">char</span><span class="p">)(</span><span class="sc">'0'</span> <span class="o">+</span> <span class="n">j</span><span class="p">)</span> <span class="o">+</span> <span class="s">"l"</span><span class="p">;</span>
+        <span class="n">label_r</span> <span class="o">=</span> <span class="n">label_r</span> <span class="o">+</span> <span class="p">(</span><span class="kt">char</span><span class="p">)(</span><span class="sc">'0'</span> <span class="o">+</span> <span class="n">j</span><span class="p">)</span> <span class="o">+</span> <span class="s">"r"</span><span class="p">;</span>
+        <span class="n">fs</span><span class="p">[</span><span class="n">label_l</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">temp1</span><span class="p">;</span>
+        <span class="n">fs</span><span class="p">[</span><span class="n">label_r</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">temp2</span><span class="p">;</span>
+        <span class="n">Point2f</span> <span class="n">src</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{(</span><span class="n">temp1</span> <span class="o">+</span> <span class="n">temp2</span><span class="p">)</span><span class="o">/</span><span class="mi">2</span> <span class="o">-</span> <span class="n">Point</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">20</span><span class="p">),</span> <span class="n">temp1</span><span class="p">,</span> <span class="n">temp2</span><span class="p">};</span>
+        <span class="n">Point2f</span> <span class="n">dst</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{(</span><span class="n">eye1</span> <span class="o">+</span> <span class="n">eye2</span><span class="p">)</span><span class="o">/</span><span class="mi">2</span> <span class="o">-</span> <span class="n">Point</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">20</span><span class="p">),</span> <span class="n">eye1</span><span class="p">,</span> <span class="n">eye2</span><span class="p">};</span>
+        <span class="n">Mat</span> <span class="n">affineMat</span> <span class="o">=</span> <span class="n">getAffineTransform</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="n">dst</span><span class="p">);</span>
+        <span class="n">warpAffine</span><span class="p">(</span><span class="n">myface</span><span class="p">,</span> <span class="n">myface</span><span class="p">,</span> <span class="n">affineMat</span><span class="p">,</span> <span class="n">Size</span><span class="p">(</span><span class="n">faces</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">cols</span><span class="p">,</span> <span class="n">faces</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">rows</span><span class="p">),</span> <span class="mi">1</span><span class="p">,</span> <span class="n">BORDER_REFLECT</span><span class="p">);</span>
+        <span class="n">reconstruct_set</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">myface</span><span class="p">);</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">j</span> <span class="o">&lt;</span> <span class="mi">5</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">training_set</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">myface</span><span class="p">);</span>
+        <span class="p">}</span>
+        <span class="k">else</span> <span class="p">{</span>
+            <span class="n">test_set</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">myface</span><span class="p">);</span>
+        <span class="p">}</span>
+        <span class="c1">// imshow("myface", myface);</span>
+        <span class="c1">// waitKey(0);</span>
+    <span class="p">}</span>
+</code></pre></div></div>
+
+<h4 id="训练">训练</h4>
+
+<p>训练模型时先进行预处理，先将训练集中所有图像转换为灰度图，然后进行直方图均衡化。</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="c1">//Training</span>
+    <span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">"Start training"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+    <span class="n">FileStorage</span> <span class="nf">model</span><span class="p">(</span><span class="s">"model.json"</span><span class="p">,</span> <span class="n">FileStorage</span><span class="o">::</span><span class="n">WRITE</span><span class="p">);</span>
+    <span class="c1">//histogram equalization</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">training_set</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span> <span class="c1">// the first 200 pics are used as training set</span>
+        <span class="n">cvtColor</span><span class="p">(</span><span class="n">training_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">training_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">COLOR_RGB2GRAY</span><span class="p">);</span>
+        <span class="n">equalizeHist</span><span class="p">(</span><span class="n">training_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">training_set</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+        <span class="c1">// imshow("afterhist", faces[i]);</span>
+        <span class="c1">// waitKey(100);</span>
+    <span class="p">}</span>
+</code></pre></div></div>
+
+<p>然后将训练集中的每张图像转化为一个行向量，合并为一个大矩阵 <code class="language-plaintext highlighter-rouge">samples</code></p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="c1">//combine all the training set into a big matrix, each row is a image</span>
+    <span class="n">Mat</span> <span class="n">samples</span> <span class="o">=</span> <span class="n">training_set</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">reshape</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">);</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">training_set</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">vconcat</span><span class="p">(</span><span class="n">samples</span><span class="p">,</span> <span class="n">training_set</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">reshape</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">samples</span><span class="p">);</span>
+    <span class="p">}</span>
+</code></pre></div></div>
+
+<p>接下来调用 <code class="language-plaintext highlighter-rouge">calcCovarMatrix()</code> 函数计算出矩阵 <code class="language-plaintext highlighter-rouge">samples</code> 的均值与协方差矩阵。这里我一开始使用的方法是求出协方差矩阵的特征向量作为特征人脸，但是这样做程序的运算量很大，需要运行较久才能获得结果。而现在改为使用 SVD 来求取特征人脸，协方差矩阵已经用不到了，但是 <code class="language-plaintext highlighter-rouge">calcCovarMatrix()</code> 函数求得的均值仍有用，因此此处没有做改动，此处改为调用求取全部行向量均值的函数也可行，同时也可以进一步提升性能。并将平均人脸向量 <code class="language-plaintext highlighter-rouge">mean</code> 写入训练结果文件 <code class="language-plaintext highlighter-rouge">model.json</code> 中。然后将样本中心化，这里使用的方法为，把 <code class="language-plaintext highlighter-rouge">mean</code> 纵向拼接成一个和 <code class="language-plaintext highlighter-rouge">f_samples</code> 一样大的矩阵 <code class="language-plaintext highlighter-rouge">meanMat</code> ，每一行都是原先的 <code class="language-plaintext highlighter-rouge">mean</code> 矩阵，这样直接将 <code class="language-plaintext highlighter-rouge">f_samples</code> 与 <code class="language-plaintext highlighter-rouge">meanMat</code> 做矩阵减法，即完成了中心化。</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="c1">//calculate the mean vector and then centralize</span>
+    <span class="n">Mat</span> <span class="n">mean</span><span class="p">,</span> <span class="n">cov</span><span class="p">;</span>
+    <span class="n">calcCovarMatrix</span><span class="p">(</span><span class="n">samples</span><span class="p">,</span> <span class="n">cov</span><span class="p">,</span> <span class="n">mean</span><span class="p">,</span> <span class="n">COVAR_NORMAL</span> <span class="o">|</span> <span class="n">COVAR_ROWS</span><span class="p">,</span> <span class="n">CV_64FC1</span><span class="p">);</span>
+    <span class="n">model</span><span class="o">&lt;&lt;</span><span class="s">"mean"</span><span class="o">&lt;&lt;</span><span class="n">mean</span><span class="p">;</span>
+    <span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">"the mean image is generated"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">meanMat</span> <span class="o">=</span> <span class="n">mean</span><span class="p">.</span><span class="n">clone</span><span class="p">();</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">205</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">vconcat</span><span class="p">(</span><span class="n">meanMat</span><span class="p">,</span> <span class="n">mean</span><span class="p">,</span> <span class="n">meanMat</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="n">Mat</span> <span class="n">f_samples</span><span class="p">;</span>
+    <span class="n">samples</span><span class="p">.</span><span class="n">convertTo</span><span class="p">(</span><span class="n">f_samples</span><span class="p">,</span> <span class="n">CV_64FC1</span><span class="p">);</span>
+    <span class="n">Mat</span> <span class="n">centralized</span><span class="p">;</span>
+    <span class="n">centralized</span> <span class="o">=</span> <span class="n">f_samples</span> <span class="o">-</span> <span class="n">meanMat</span><span class="p">;</span>
+    <span class="c1">// cout&lt;&lt;"centralized size: "&lt;&lt;centralized.rows&lt;&lt;", "&lt;&lt;centralized.cols&lt;&lt;endl;</span>
+</code></pre></div></div>
+
+<p>接下来这部分是输出生成的平均脸，不再赘述</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="c1">//reshape the mean vector to make it a image again</span>
+    <span class="n">Mat</span> <span class="n">meanimg</span><span class="p">;</span>
+    <span class="n">mean</span><span class="p">.</span><span class="n">convertTo</span><span class="p">(</span><span class="n">meanimg</span><span class="p">,</span> <span class="n">CV_8UC1</span><span class="p">);</span>
+    <span class="n">meanimg</span> <span class="o">=</span> <span class="n">meanimg</span><span class="p">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">rows</span><span class="p">);</span>
+    <span class="n">imshow</span><span class="p">(</span><span class="s">"mean"</span><span class="p">,</span> <span class="n">meanimg</span><span class="p">);</span>
+    <span class="n">waitKey</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>接下来则是通过 SVD 计算特征脸，取 SVD 得到的右奇异矩阵的前 <code class="language-plaintext highlighter-rouge">p</code> 行作为特征脸矩阵 <code class="language-plaintext highlighter-rouge">pc</code> ，此处变量名为 <code class="language-plaintext highlighter-rouge">a</code> ，这里取前 <code class="language-plaintext highlighter-rouge">p</code> 行是由于 <code class="language-plaintext highlighter-rouge">SVD::compute()</code> 得到的奇异值矩阵中的奇异值是从上到下由大到小排列的，将其写入训练结果文件 <code class="language-plaintext highlighter-rouge">model.json</code> 中，并计算 <code class="language-plaintext highlighter-rouge">pc</code> 的转置 <code class="language-plaintext highlighter-rouge">pct</code></p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="c1">//calculate the eigenvalues and eigenvectors</span>
+    <span class="n">Mat</span> <span class="n">eigenvals</span><span class="p">,</span> <span class="n">eigenvecs</span><span class="p">;</span>   <span class="c1">//eigenvecs: 10304 rows and 10304 cols</span>
+    <span class="n">Mat</span> <span class="n">left</span><span class="p">;</span>
+    <span class="n">SVD</span><span class="o">::</span><span class="n">compute</span><span class="p">(</span><span class="n">centralized</span><span class="p">,</span> <span class="n">eigenvals</span><span class="p">,</span> <span class="n">left</span><span class="p">,</span> <span class="n">eigenvecs</span><span class="p">,</span> <span class="n">SVD</span><span class="o">::</span><span class="n">FULL_UV</span><span class="p">);</span>
+    <span class="c1">// cout&lt;&lt;"eigenval size: "&lt;&lt;eigenvals.rows&lt;&lt;", "&lt;&lt;eigenvals.cols&lt;&lt;endl;</span>
+    <span class="c1">// cout&lt;&lt;"left size: "&lt;&lt;left.rows&lt;&lt;", "&lt;&lt;left.cols&lt;&lt;endl;</span>
+    <span class="c1">// cout&lt;&lt;"eigenvec size: "&lt;&lt;eigenvecs.rows&lt;&lt;", "&lt;&lt;eigenvecs.cols&lt;&lt;endl;</span>
+    <span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">"eigenfaces generated"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+    
+    <span class="kt">int</span> <span class="n">p</span><span class="p">;</span>
+    <span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">"please input the number of PCs you wanted"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+    <span class="n">cin</span><span class="o">&gt;&gt;</span><span class="n">p</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">a</span> <span class="o">=</span> <span class="n">eigenvecs</span><span class="p">.</span><span class="n">rowRange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">p</span><span class="p">).</span><span class="n">clone</span><span class="p">();</span>
+    <span class="n">model</span><span class="o">&lt;&lt;</span><span class="s">"pc"</span><span class="o">&lt;&lt;</span><span class="n">a</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">at</span><span class="p">;</span>
+    <span class="n">transpose</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">at</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>接下来为将前 10 张特征脸拼接显示出来。由于特征脸矩阵中取值的问题，直接转换为 <code class="language-plaintext highlighter-rouge">CV_8UC1</code> 格式输出的话会是一片黑色，因此这里先使用 <code class="language-plaintext highlighter-rouge">MINMAX</code> 算法将其范围调整至 <code class="language-plaintext highlighter-rouge">[0, 255]</code> ，再进行显示</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="n">Mat</span> <span class="n">show</span><span class="p">;</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">Mat</span> <span class="n">temp</span> <span class="o">=</span> <span class="n">eigenvecs</span><span class="p">.</span><span class="n">rowRange</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">).</span><span class="n">clone</span><span class="p">();</span>
+        <span class="n">normalize</span><span class="p">(</span><span class="n">temp</span><span class="p">,</span> <span class="n">temp</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="n">NORM_MINMAX</span><span class="p">);</span>
+        <span class="n">temp</span><span class="p">.</span><span class="n">convertTo</span><span class="p">(</span><span class="n">temp</span><span class="p">,</span> <span class="n">CV_8UC1</span><span class="p">);</span>
+        <span class="n">temp</span> <span class="o">=</span> <span class="n">temp</span><span class="p">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">rows</span><span class="p">);</span>
+        <span class="n">resize</span><span class="p">(</span><span class="n">temp</span><span class="p">,</span> <span class="n">temp</span><span class="p">,</span> <span class="n">Size</span><span class="p">(</span><span class="mi">184</span><span class="p">,</span> <span class="mi">224</span><span class="p">));</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">i</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">show</span> <span class="o">=</span> <span class="n">temp</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="k">else</span> <span class="p">{</span>
+            <span class="n">hconcat</span><span class="p">(</span><span class="n">show</span><span class="p">,</span> <span class="n">temp</span><span class="p">,</span> <span class="n">show</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="n">imshow</span><span class="p">(</span><span class="s">"first 10 eigenfaces"</span><span class="p">,</span> <span class="n">show</span><span class="p">);</span>
+    <span class="n">waitKey</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>最后则是将训练集映射到特征脸空间中，使用中心化后的训练集乘以特征脸矩阵的转置即可得到结果矩阵 <code class="language-plaintext highlighter-rouge">train_project</code> ，其中每一个行向量则对应一张图像降维后的结果，将映射后得到的结果也写入训练结果文件 <code class="language-plaintext highlighter-rouge">model.json</code> 中。至此则完成了模型的训练。</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">"generating training set projection"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">train_project</span> <span class="o">=</span> <span class="n">centralized</span> <span class="o">*</span> <span class="n">at</span><span class="p">;</span>   <span class="c1">// each info is a row vec</span>
+    <span class="n">model</span><span class="o">&lt;&lt;</span><span class="s">"train_project"</span><span class="o">&lt;&lt;</span><span class="n">train_project</span><span class="p">;</span>
+    <span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">"done"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+</code></pre></div></div>
+
+<h4 id="识别测试部分">识别测试部分</h4>
+
+<p>此部分中，先将测试集转换为灰度图后进行直方图均衡化，然后从 <code class="language-plaintext highlighter-rouge">model.json</code> 中读取训练好的模型，包括平均人脸 <code class="language-plaintext highlighter-rouge">mean</code> ，训练集映射到特征脸空间的结果 <code class="language-plaintext highlighter-rouge">train_project</code> ，和特征人脸矩阵 <code class="language-plaintext highlighter-rouge">pc</code> 。其中 <code class="language-plaintext highlighter-rouge">mean</code> 是一个行向量，数据数与图片的像素数相同，<code class="language-plaintext highlighter-rouge">train_project</code> 是一个矩阵，有与 <code class="language-plaintext highlighter-rouge">training_set</code> 中图像数量相同的行数，和与选取的 <code class="language-plaintext highlighter-rouge">pc</code> 数量相同的列数，每一行代表一个 <code class="language-plaintext highlighter-rouge">training_set</code> 中图像投影到特征脸空间后的降维结果。然后调用 <code class="language-plaintext highlighter-rouge">transpose</code> 函数求出 <code class="language-plaintext highlighter-rouge">pc</code> 的转置 <code class="language-plaintext highlighter-rouge">pct</code> 。这样所需的训练结果数据就已经准备好了</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="nf">mytest</span><span class="p">(</span><span class="n">string</span> <span class="n">model</span><span class="p">,</span> <span class="n">vector</span><span class="o">&lt;</span><span class="n">Mat</span><span class="o">&gt;</span> <span class="n">test_set</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">fstream</span> <span class="n">ftxt</span><span class="p">(</span><span class="s">"testing_result.txt"</span><span class="p">,</span> <span class="n">ios</span><span class="o">::</span><span class="n">out</span><span class="p">);</span>
+    <span class="n">ftxt</span><span class="p">.</span><span class="n">clear</span><span class="p">();</span>
+    <span class="c1">//histogram equalization</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">test_set</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">cvtColor</span><span class="p">(</span><span class="n">test_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">test_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">COLOR_RGB2GRAY</span><span class="p">);</span>
+        <span class="n">equalizeHist</span><span class="p">(</span><span class="n">test_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">test_set</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+    <span class="p">}</span>
+    <span class="n">FileStorage</span> <span class="n">fs</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">FileStorage</span><span class="o">::</span><span class="n">READ</span><span class="p">);</span>
+    <span class="n">Mat</span> <span class="n">mean</span><span class="p">;</span>
+    <span class="n">fs</span><span class="p">[</span><span class="s">"mean"</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">mean</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">train_project</span><span class="p">;</span>
+    <span class="n">fs</span><span class="p">[</span><span class="s">"train_project"</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">train_project</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">pc</span><span class="p">,</span> <span class="n">pct</span><span class="p">;</span>
+    <span class="n">fs</span><span class="p">[</span><span class="s">"pc"</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">pc</span><span class="p">;</span>
+    <span class="n">transpose</span><span class="p">(</span><span class="n">pc</span><span class="p">,</span> <span class="n">pct</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>然后将测试集的图像每个转化为一个行向量，全部存入矩阵 <code class="language-plaintext highlighter-rouge">test_sample</code> 中，然后将每一行都减去 <code class="language-plaintext highlighter-rouge">mean</code> ，这里的实现方法是把 <code class="language-plaintext highlighter-rouge">mean</code> 纵向拼接成一个和 <code class="language-plaintext highlighter-rouge">test_sample</code> 一样大的矩阵 <code class="language-plaintext highlighter-rouge">test_mean</code> ，每一行都是原先的 <code class="language-plaintext highlighter-rouge">mean</code> 矩阵，这样直接将 <code class="language-plaintext highlighter-rouge">test_sample</code> 与 <code class="language-plaintext highlighter-rouge">test_mean</code> 做矩阵减法，即完成了中心化，存入 <code class="language-plaintext highlighter-rouge">test_centr</code> 中。然后则使用 <code class="language-plaintext highlighter-rouge">test_centr</code> 乘 <code class="language-plaintext highlighter-rouge">pct</code>（矩阵乘法），即可得到 <code class="language-plaintext highlighter-rouge">test_set</code> 中人脸投影到特征脸空间后的结果 <code class="language-plaintext highlighter-rouge">test_project</code> 。同样地，<code class="language-plaintext highlighter-rouge">test_project</code> 中每一行即为 <code class="language-plaintext highlighter-rouge">test_set</code> 中一个人脸投影到特征脸空间后的结果。</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="n">Mat</span> <span class="n">test_sample</span> <span class="o">=</span> <span class="n">test_set</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">reshape</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">);</span>
+    <span class="n">Mat</span> <span class="n">test_mean</span> <span class="o">=</span> <span class="n">mean</span><span class="p">.</span><span class="n">clone</span><span class="p">();</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">test_set</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">vconcat</span><span class="p">(</span><span class="n">test_sample</span><span class="p">,</span> <span class="n">test_set</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">reshape</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">test_sample</span><span class="p">);</span>
+        <span class="n">vconcat</span><span class="p">(</span><span class="n">test_mean</span><span class="p">,</span> <span class="n">mean</span><span class="p">,</span> <span class="n">test_mean</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="n">test_sample</span><span class="p">.</span><span class="n">convertTo</span><span class="p">(</span><span class="n">test_sample</span><span class="p">,</span> <span class="n">CV_64FC1</span><span class="p">);</span>
+    <span class="c1">// cout&lt;&lt;"test sample size: "&lt;&lt;test_sample.rows&lt;&lt;", "&lt;&lt;test_sample.cols&lt;&lt;endl;</span>
+    <span class="n">Mat</span> <span class="n">test_centr</span> <span class="o">=</span> <span class="n">test_sample</span> <span class="o">-</span> <span class="n">test_mean</span><span class="p">;</span>
+    <span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">"generating testing set projection"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">test_project</span> <span class="o">=</span> <span class="n">test_centr</span> <span class="o">*</span> <span class="n">pct</span><span class="p">;</span>
+    <span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">"done"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>接下来则与训练集结果进行比较。对于 <code class="language-plaintext highlighter-rouge">test_project</code> 的每一行，计算其与 <code class="language-plaintext highlighter-rouge">train_project</code> 每行的欧氏距离，并记录 <code class="language-plaintext highlighter-rouge">train_project</code> 中欧式距离最小的行编号，将结果写入 <code class="language-plaintext highlighter-rouge">testing_result.txt</code> 中。通过 <code class="language-plaintext highlighter-rouge">i/5 + 1</code> 可以得到 <code class="language-plaintext highlighter-rouge">test_face</code> 对应的脸的编号，<code class="language-plaintext highlighter-rouge">i%5 + 6</code> 可以得到这是对应脸的第几张图片，而 <code class="language-plaintext highlighter-rouge">min_ind/5 + 1</code> 可以得到最相似的 <code class="language-plaintext highlighter-rouge">training_face</code> 中对应的脸的编号，<code class="language-plaintext highlighter-rouge">min_ind%5 + 1</code> 可以得到这是对应脸的第几张图片，将这些信息输出到 <code class="language-plaintext highlighter-rouge">testing_result.txt</code> 中。判断一次测试结果是否正确的方法即为判断 test face 与 result face 是否为同一张脸，若是，则表明结果正确，将 <code class="language-plaintext highlighter-rouge">correct_cnt</code> 自增 <code class="language-plaintext highlighter-rouge">1</code> ，反之则结果错误，不进行操作，将每次测试的正确与否也输入至 <code class="language-plaintext highlighter-rouge">testing_result.txt</code> 中。最后在循环结束后，<code class="language-plaintext highlighter-rouge">correct_cnt</code> 中的值即为测试结果正确数量，用 <code class="language-plaintext highlighter-rouge">correct_cnt/test_set.size()</code> 即可得到本次测试的正确率。将正确率也写入 <code class="language-plaintext highlighter-rouge">testing_result.txt</code> 中。</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="c1">// comparison</span>
+    <span class="kt">int</span> <span class="n">correct_cnt</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">test_set</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// compute distance</span>
+        <span class="kt">int</span> <span class="n">min_ind</span><span class="p">;</span>
+        <span class="kt">double</span> <span class="n">min_dist</span><span class="p">;</span>
+        <span class="n">Mat</span> <span class="n">vec_test</span> <span class="o">=</span> <span class="n">test_project</span><span class="p">.</span><span class="n">rowRange</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">).</span><span class="n">clone</span><span class="p">();</span>
+        <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">index</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">index</span> <span class="o">&lt;</span> <span class="n">train_project</span><span class="p">.</span><span class="n">rows</span><span class="p">;</span> <span class="n">index</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">Mat</span> <span class="n">vec_train</span> <span class="o">=</span> <span class="n">train_project</span><span class="p">.</span><span class="n">rowRange</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">index</span><span class="o">+</span><span class="mi">1</span><span class="p">).</span><span class="n">clone</span><span class="p">();</span>
+            <span class="n">Mat</span> <span class="n">distance</span> <span class="o">=</span> <span class="n">vec_test</span> <span class="o">-</span> <span class="n">vec_train</span><span class="p">;</span>
+            <span class="n">pow</span><span class="p">(</span><span class="n">distance</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">distance</span><span class="p">);</span>
+            <span class="kt">double</span> <span class="n">sum</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+            <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="n">distance</span><span class="p">.</span><span class="n">cols</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">sum</span> <span class="o">+=</span> <span class="n">distance</span><span class="p">.</span><span class="n">at</span><span class="o">&lt;</span><span class="n">float64_t</span><span class="o">&gt;</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">j</span><span class="p">);</span>
+            <span class="p">}</span>
+            <span class="k">if</span><span class="p">(</span><span class="n">index</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">min_dist</span> <span class="o">=</span> <span class="n">sum</span><span class="p">;</span>
+                <span class="n">min_ind</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+            <span class="p">}</span>
+            <span class="k">else</span> <span class="p">{</span>
+                <span class="k">if</span><span class="p">(</span><span class="n">sum</span> <span class="o">&lt;</span> <span class="n">min_dist</span><span class="p">)</span> <span class="p">{</span>
+                    <span class="n">min_dist</span> <span class="o">=</span> <span class="n">sum</span><span class="p">;</span>
+                    <span class="n">min_ind</span> <span class="o">=</span> <span class="n">index</span><span class="p">;</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="n">ftxt</span><span class="o">&lt;&lt;</span><span class="s">"test face: s"</span><span class="o">&lt;&lt;</span><span class="n">i</span><span class="o">/</span><span class="mi">5</span> <span class="o">+</span> <span class="mi">1</span><span class="o">&lt;&lt;</span><span class="s">"p"</span><span class="o">&lt;&lt;</span><span class="n">i</span><span class="o">%</span><span class="mi">5</span> <span class="o">+</span> <span class="mi">6</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+        <span class="n">ftxt</span><span class="o">&lt;&lt;</span><span class="s">"result face: s"</span><span class="o">&lt;&lt;</span><span class="n">min_ind</span><span class="o">/</span><span class="mi">5</span> <span class="o">+</span> <span class="mi">1</span><span class="o">&lt;&lt;</span><span class="s">"p"</span><span class="o">&lt;&lt;</span><span class="n">min_ind</span><span class="o">%</span><span class="mi">5</span> <span class="o">+</span> <span class="mi">1</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+        <span class="n">ftxt</span><span class="o">&lt;&lt;</span><span class="s">"min distance = "</span><span class="o">&lt;&lt;</span><span class="n">min_dist</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">i</span><span class="o">/</span><span class="mi">5</span> <span class="o">==</span> <span class="n">min_ind</span><span class="o">/</span><span class="mi">5</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">correct_cnt</span><span class="o">++</span><span class="p">;</span>
+            <span class="n">ftxt</span><span class="o">&lt;&lt;</span><span class="s">"passed"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="k">else</span> <span class="p">{</span>
+            <span class="n">ftxt</span><span class="o">&lt;&lt;</span><span class="s">"failed"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="n">ftxt</span><span class="o">&lt;&lt;</span><span class="s">"-------------------------"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="n">ftxt</span><span class="o">&lt;&lt;</span><span class="s">"acc = "</span><span class="o">&lt;&lt;</span><span class="p">(</span><span class="kt">double</span><span class="p">)</span><span class="n">correct_cnt</span><span class="o">/</span><span class="n">test_set</span><span class="p">.</span><span class="n">size</span><span class="p">()</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+    <span class="n">ftxt</span><span class="p">.</span><span class="n">close</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h4 id="图像重构部分">图像重构部分</h4>
+
+<p>图像重构时同样也需要之前训练好的模型，因此从 <code class="language-plaintext highlighter-rouge">model.json</code> 中读取特征脸矩阵 <code class="language-plaintext highlighter-rouge">pc</code> 并计算其转置 <code class="language-plaintext highlighter-rouge">pct</code> 。将同样直方图均衡化并中心化后的图像（一个行向量）先乘以 <code class="language-plaintext highlighter-rouge">pct</code> ，得到其降维后的结果，然后乘以 <code class="language-plaintext highlighter-rouge">pc</code> 来重构图像，最后将这些重构出的图像放大两倍拼接起来显示出来。</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="nf">myreconstruction</span><span class="p">(</span><span class="n">string</span> <span class="n">model</span><span class="p">,</span> <span class="n">vector</span><span class="o">&lt;</span><span class="n">Mat</span><span class="o">&gt;</span> <span class="n">reconstruct_set</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">FileStorage</span> <span class="n">fs</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">FileStorage</span><span class="o">::</span><span class="n">READ</span><span class="p">);</span>
+    <span class="n">Mat</span> <span class="n">pc</span><span class="p">;</span>
+    <span class="n">fs</span><span class="p">[</span><span class="s">"pc"</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">pc</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">pct</span><span class="p">;</span>
+    <span class="n">transpose</span><span class="p">(</span><span class="n">pc</span><span class="p">,</span> <span class="n">pct</span><span class="p">);</span>
+    <span class="n">Mat</span> <span class="n">mean</span><span class="p">;</span>
+    <span class="n">fs</span><span class="p">[</span><span class="s">"mean"</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">mean</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">result</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">src</span><span class="p">;</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">cvtColor</span><span class="p">(</span><span class="n">reconstruct_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">reconstruct_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">COLOR_RGB2GRAY</span><span class="p">);</span>
+        <span class="n">equalizeHist</span><span class="p">(</span><span class="n">reconstruct_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">reconstruct_set</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+        <span class="n">Mat</span> <span class="n">temp</span> <span class="o">=</span> <span class="n">reconstruct_set</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">reshape</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">);</span>
+        <span class="n">temp</span><span class="p">.</span><span class="n">convertTo</span><span class="p">(</span><span class="n">temp</span><span class="p">,</span> <span class="n">CV_64FC1</span><span class="p">);</span>
+        <span class="n">temp</span> <span class="o">=</span> <span class="n">temp</span> <span class="o">-</span> <span class="n">mean</span><span class="p">;</span>
+        <span class="n">temp</span> <span class="o">=</span> <span class="n">temp</span> <span class="o">*</span> <span class="n">pct</span><span class="p">;</span>
+        <span class="n">temp</span> <span class="o">=</span> <span class="n">temp</span> <span class="o">*</span> <span class="n">pc</span><span class="p">;</span>
+        <span class="n">temp</span> <span class="o">=</span> <span class="n">temp</span> <span class="o">+</span> <span class="n">mean</span><span class="p">;</span>
+        <span class="n">temp</span> <span class="o">=</span> <span class="n">temp</span><span class="p">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">rows</span><span class="p">);</span>
+        <span class="n">resize</span><span class="p">(</span><span class="n">temp</span><span class="p">,</span> <span class="n">temp</span><span class="p">,</span> <span class="n">Size</span><span class="p">(</span><span class="mi">184</span><span class="p">,</span> <span class="mi">224</span><span class="p">));</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">i</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">temp</span><span class="p">;</span>
+            <span class="n">src</span> <span class="o">=</span> <span class="n">reconstruct_set</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+        <span class="p">}</span>
+        <span class="k">else</span> <span class="p">{</span>
+            <span class="n">hconcat</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">temp</span><span class="p">,</span> <span class="n">result</span><span class="p">);</span>
+            <span class="n">hconcat</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="n">reconstruct_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">src</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="n">normalize</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">result</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="n">NORM_MINMAX</span><span class="p">);</span>
+    <span class="n">normalize</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="n">src</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="n">NORM_MINMAX</span><span class="p">);</span>
+    <span class="n">result</span><span class="p">.</span><span class="n">convertTo</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">CV_8UC1</span><span class="p">);</span>
+    <span class="n">src</span><span class="p">.</span><span class="n">convertTo</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="n">CV_8UC1</span><span class="p">);</span>
+    <span class="n">imshow</span><span class="p">(</span><span class="s">"reconstruct"</span><span class="p">,</span> <span class="n">result</span><span class="p">);</span>
+    <span class="n">imshow</span><span class="p">(</span><span class="s">"src"</span><span class="p">,</span> <span class="n">src</span><span class="p">);</span>
+    <span class="n">waitKey</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>]]></content><author><name>GitHub User</name></author><category term="markdown" /><category term="CV" /><summary type="html"><![CDATA[实验原理]]></summary></entry><entry><title type="html">Welcome to Jekyll!</title><link href="/jekyll-theme-yat/jekyll/2018/12/07/welcome-to-jekyll.html" rel="alternate" type="text/html" title="Welcome to Jekyll!" /><published>2018-12-07T00:00:00+00:00</published><updated>2018-12-07T00:00:00+00:00</updated><id>/jekyll-theme-yat/jekyll/2018/12/07/welcome-to-jekyll</id><content type="html" xml:base="/jekyll-theme-yat/jekyll/2018/12/07/welcome-to-jekyll.html"><![CDATA[<p>You’ll find this post in your <code class="language-plaintext highlighter-rouge">_posts</code> directory. Go ahead and edit it and re-build the site to see your changes. You can rebuild the site in many different ways, but the most common way is to run <code class="language-plaintext highlighter-rouge">jekyll serve</code>, which launches a web server and auto-regenerates your site when a file is updated.</p>
+
+<p>To add new posts, simply add a file in the <code class="language-plaintext highlighter-rouge">_posts</code> directory that follows the convention <code class="language-plaintext highlighter-rouge">YYYY-MM-DD-name-of-post.ext</code> and includes the necessary front matter. Take a look at the source for this post to get an idea about how it works.</p>
+
+<h2 id="section-1">section 1</h2>
+
+<p>Jekyll also offers powerful support for code snippets:</p>
+
+<figure class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">def</span> <span class="nf">print_hi</span><span class="p">(</span><span class="nb">name</span><span class="p">)</span>
+<span class="nb">puts</span> <span class="s2">"Hi, </span><span class="si">#{</span><span class="nb">name</span><span class="si">}</span><span class="s2">"</span>
+<span class="k">end</span>
+<span class="n">print_hi</span><span class="p">(</span><span class="s1">'Tom'</span><span class="p">)</span>
+<span class="c1">#=&gt; prints 'Hi, Tom' to STDOUT.</span></code></pre></figure>
+
+<h2 id="section-2">section 2</h2>
+
+<p>Check out the <a href="https://jekyllrb.com/docs/home">Jekyll docs</a> for more info on how to get the most out of Jekyll. File all bugs/feature requests at <a href="https://github.com/jekyll/jekyll">Jekyll’s GitHub repo</a>. If you have questions, you can ask them on <a href="https://talk.jekyllrb.com/">Jekyll Talk</a>.</p>
+
+<p>$ a * b = c ^ b $</p>
+
+<p>$ 2^{\frac{n-1}{3}} $</p>
+
+<p>$ \int_a^b f(x)\,dx. $</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#include</span> <span class="cpf">&lt;iostream&gt;</span><span class="cp">
+</span><span class="k">using</span> <span class="k">namespace</span> <span class="n">std</span><span class="p">;</span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+  <span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="s">"Hello World!"</span><span class="p">;</span>
+  <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="c1">// prints 'Hi, Tom' to STDOUT.</span>
+</code></pre></div></div>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Person</span><span class="p">:</span>
+  <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">age</span><span class="p">):</span>
+    <span class="bp">self</span><span class="p">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+    <span class="bp">self</span><span class="p">.</span><span class="n">age</span> <span class="o">=</span> <span class="n">age</span>
+
+<span class="n">p1</span> <span class="o">=</span> <span class="n">Person</span><span class="p">(</span><span class="s">"John"</span><span class="p">,</span> <span class="mi">36</span><span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="n">p1</span><span class="p">.</span><span class="n">name</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="n">p1</span><span class="p">.</span><span class="n">age</span><span class="p">)</span>
+</code></pre></div></div>]]></content><author><name>Jeffrey</name></author><category term="jekyll" /><category term="jekyll" /><category term="theme" /><category term="yat" /><summary type="html"><![CDATA[You’ll find this post in your _posts directory. Go ahead and edit it and re-build the site to see your changes. You can rebuild the site in many different ways, but the most common way is to run jekyll serve, which launches a web server and auto-regenerates your site when a file is updated.]]></summary></entry><entry><title type="html">An exhibit of Markdown</title><link href="/jekyll-theme-yat/markdown/2018/12/05/an-exhibit-of-markdown.html" rel="alternate" type="text/html" title="An exhibit of Markdown" /><published>2018-12-05T00:00:00+00:00</published><updated>2018-12-05T00:00:00+00:00</updated><id>/jekyll-theme-yat/markdown/2018/12/05/an-exhibit-of-markdown</id><content type="html" xml:base="/jekyll-theme-yat/markdown/2018/12/05/an-exhibit-of-markdown.html"><![CDATA[<p>This note demonstrates some of what <a href="https://daringfireball.net/projects/markdown/">Markdown</a> is capable of doing.</p>
+
+<h2 id="an-exhibit-of-markdown">An exhibit of Markdown</h2>
+
+<p><em>Note: Feel free to play with this page. Unlike regular notes, this doesn’t automatically save itself.</em></p>
+
+<h2 id="basic-formatting">Basic formatting</h2>
+
+<p>Paragraphs can be written like so. A paragraph is the basic block of Markdown. A paragraph is what text will turn into when there is no reason it should become anything else.</p>
+
+<p>Paragraphs must be separated by a blank line. Basic formatting of <em>italics</em> and <strong>bold</strong> is supported. This <em>can be <strong>nested</strong> like</em> so.</p>
+
+<h2 id="lists">Lists</h2>
+
+<h3 id="ordered-list">Ordered list</h3>
+
+<ol>
+  <li>Item 1</li>
+  <li>A second item</li>
+  <li>Number 3</li>
+  <li>Ⅳ</li>
+</ol>
+
+<p><em>Note: the fourth item uses the Unicode character for <a href="https://www.fileformat.info/info/unicode/char/2163/index.htm">Roman numeral four</a>.</em></p>
+
+<h3 id="unordered-list">Unordered list</h3>
+
+<ul>
+  <li>An item</li>
+  <li>Another item</li>
+  <li>Yet another item</li>
+  <li>And there’s more…</li>
+</ul>
+
+<h2 id="paragraph-modifiers">Paragraph modifiers</h2>
+
+<h3 id="code-block">Code block</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Code blocks are very useful for developers and other people who look at code or other things that are written in plain text. As you can see, it uses a fixed-width font.
+</code></pre></div></div>
+
+<p>You can also make <code class="language-plaintext highlighter-rouge">inline code</code> to add code into other things.</p>
+
+<h3 id="quote">Quote</h3>
+
+<blockquote>
+  <p>Here is a quote. What this is should be self explanatory. Quotes are automatically indented when they are used.</p>
+</blockquote>
+
+<h2 id="headings">Headings</h2>
+
+<p>There are six levels of headings. They correspond with the six levels of HTML headings. You’ve probably noticed them already in the page. Each level down uses one more hash character.</p>
+
+<h3 id="headings-can-also-contain-formatting">Headings <em>can</em> also contain <strong>formatting</strong></h3>
+
+<h3 id="they-can-even-contain-inline-code">They can even contain <code class="language-plaintext highlighter-rouge">inline code</code></h3>
+
+<p>Of course, demonstrating what headings look like messes up the structure of the page.</p>
+
+<p>I don’t recommend using more than three or four levels of headings here, because, when you’re smallest heading isn’t too small, and you’re largest heading isn’t too big, and you want each size up to look noticeably larger and more important, there there are only so many sizes that you can use.</p>
+
+<h2 id="urls">URLs</h2>
+
+<p>URLs can be made in a handful of ways:</p>
+
+<ul>
+  <li>A named link to <a href="https://www.markitdown.net/">MarkItDown</a>. The easiest way to do these is to select what you want to make a link and hit <code class="language-plaintext highlighter-rouge">Ctrl+L</code>.</li>
+  <li>Another named link to <a href="https://www.markitdown.net/">MarkItDown</a></li>
+  <li>Sometimes you just want a URL like <a href="https://www.markitdown.net/">https://www.markitdown.net/</a>.</li>
+</ul>
+
+<h2 id="horizontal-rule">Horizontal rule</h2>
+
+<p>A horizontal rule is a line that goes across the middle of the page.</p>
+
+<hr />
+
+<p>It’s sometimes handy for breaking things up.</p>
+
+<h2 id="images">Images</h2>
+
+<p>Markdown can also contain images. I’ll need to add something here sometime.</p>
+
+<h2 id="finally">Finally</h2>
+
+<p>There’s actually a lot more to Markdown than this. See the official <a href="https://daringfireball.net/projects/markdown/basics">introduction</a> and <a href="https://daringfireball.net/projects/markdown/syntax">syntax</a> for more information. However, be aware that this is not using the official implementation, and this might work subtly differently in some of the little things.</p>]]></content><author><name>GitHub User</name></author><category term="markdown" /><category term="example" /><category term="markdown" /><summary type="html"><![CDATA[This note demonstrates some of what Markdown is capable of doing.]]></summary></entry><entry><title type="html">Mathjax Test</title><link href="/jekyll-theme-yat/markdown/2018/05/26/mathjax-test.html" rel="alternate" type="text/html" title="Mathjax Test" /><published>2018-05-26T00:00:00+00:00</published><updated>2018-05-26T00:00:00+00:00</updated><id>/jekyll-theme-yat/markdown/2018/05/26/mathjax-test</id><content type="html" xml:base="/jekyll-theme-yat/markdown/2018/05/26/mathjax-test.html"><![CDATA[<ul>
+  <li>A safe integer is an integer that
+    <ul>
+      <li>can be exactly represented as an IEEE-754 double precision number, and</li>
+      <li>whose IEEE-75 representation cannot be the result of rounding any other integer to fit the IEEE-754 representation</li>
+    </ul>
+  </li>
+  <li>For example, $ 2 ^ {53} - 1 $ is a safe integer,
+    <ul>
+      <li>it can be exactly represented</li>
+    </ul>
+  </li>
+</ul>]]></content><author><name>GitHub User</name></author><category term="markdown" /><category term="test" /><summary type="html"><![CDATA[A safe integer is an integer that can be exactly represented as an IEEE-754 double precision number, and whose IEEE-75 representation cannot be the result of rounding any other integer to fit the IEEE-754 representation For example, $ 2 ^ {53} - 1 $ is a safe integer, it can be exactly represented]]></summary></entry><entry><title type="html">Video example</title><link href="/jekyll-theme-yat/example/2017/12/18/video-example.html" rel="alternate" type="text/html" title="Video example" /><published>2017-12-18T00:00:00+00:00</published><updated>2017-12-18T00:00:00+00:00</updated><id>/jekyll-theme-yat/example/2017/12/18/video-example</id><content type="html" xml:base="/jekyll-theme-yat/example/2017/12/18/video-example.html"><![CDATA[<h2 id="canon-in-d-pachelbels-canon---cello--piano-best-wedding-version">Canon in D (Pachelbel’s Canon) - Cello &amp; Piano [BEST WEDDING VERSION]</h2>
+<p>Some of you know that we occasionally play for weddings. As you can imagine, we get a LOT of requests for Canon in D, and we discovered that there were no good arrangements available anywhere for piano and cello! Hard to believe given its popularity. So we decided to make our own! We tried to stick as closely to the original as possible (which was written for three violins and basso continuo), and we performed it <em>not</em> at a snail’s pace so the bride can actually make it down the aisle without putting everyone to sleep. 🙊(Yeah, we said it! Nobody likes a slow processional!) Also, the number one complaint about this piece from cellists is always how booooring it is to play because they literally have to play the same 8 bass notes over and over for the entire piece. Problem solved with this arrangement because the cello never has to play the bass! 🙌(The piano does, but we get lots of other fun stuff too so it’s ok!) So for all you musicians out there playing weddings, we hope you enjoy playing this arrangement a little more than the ones you were used to…You can get it from www.musicnotes.com. 😊Be sure to let us know in the comments if you do!</p>
+
+<p><img src="//www.youtube.com/watch?v=Ptk_1Dc2iPY" alt="" /></p>
+
+<h2 id="gucci-hallucination--the-line-animation--gucci">GUCCI HALLUCINATION / THE LINE ANIMATION / GUCCI</h2>
+<p>BACKGROUND /</p>
+
+<p>Gucci share their creative vision through a series of surreal animated paintings by acclaimed artist Ignasi Monreal and The Line Animation studio. The animations make up part of a larger campaign shared via social media, above the line and print.</p>
+
+<p>APPROACH /</p>
+
+<p>Our aim was to ground and accentuate the outlandish scenarios with ambient sound design. Neither proclaiming to be positive or negative, the sound conveys a sense of the uncanny and leaves the audience with nothing but their own interpretations. their creative vision through a series of surreal animated paintings by acclaimed artist Ignasi Monreal and The Line Animation studio. The animations make up part of a larger campaign shared via social media, above the line and print.</p>
+
+<p><img src="https://vimeo.com/263856289" alt="" /></p>
+
+<h2 id="finneas-demos-how-he-builds-songs-for-billie-eilish">FINNEAS Demos How He Builds Songs For Billie Eilish</h2>
+<p>Grammy Award-winning musician and producer FINNEAS sits down with Pitchfork and closely examines his creative process while working on some of the biggest hit songs of the past couple years. FINNEAS explores the sounds that brought upon 
+some of his greatest musical breakthroughs in songs such as bad guy, bury a friend, ocean eyes, when the party’s over, I Lost a Friend, Used to This and much more.</p>
+
+<p><img src="https://dai.ly/x7tgcev" alt="" /></p>
+
+<h2 id="2019-bmw-vision-m-next-concept-hd">2019 BMW Vision M NEXT Concept (HD)</h2>
+
+<p>In future, drivers will be able to choose whether they wish to be driven or do the driving themselves. With the BMW Vision M NEXT, the BMW Group is revealing its take on how driving pleasure might look in future. It offers a foretaste of the BMW M brand’s electrified future by placing the focus squarely on the actively engaged driver. Intelligent technologies provide comprehensive yet carefully targeted assistance to turn them into the ultimate driver.</p>
+
+<p><img src="https://www.dailymotion.com/video/x7bur2y" alt="" /></p>
+
+<h2 id="this-is-the-poster-image">This is the poster image</h2>
+<p>In modern browsers, adding a video to your page is as easy as adding an image. No longer do you need to deal with special plug-ins or require crazy markup, you can do it with a single element.
+<img src="//www.html5rocks.com/en/tutorials/video/basics/devstories.webm" alt="video" /></p>]]></content><author><name>GitHub User</name></author><category term="example" /><category term="video" /><summary type="html"><![CDATA[Canon in D (Pachelbel’s Canon) - Cello &amp; Piano [BEST WEDDING VERSION] Some of you know that we occasionally play for weddings. As you can imagine, we get a LOT of requests for Canon in D, and we discovered that there were no good arrangements available anywhere for piano and cello! Hard to believe given its popularity. So we decided to make our own! We tried to stick as closely to the original as possible (which was written for three violins and basso continuo), and we performed it not at a snail’s pace so the bride can actually make it down the aisle without putting everyone to sleep. 🙊(Yeah, we said it! Nobody likes a slow processional!) Also, the number one complaint about this piece from cellists is always how booooring it is to play because they literally have to play the same 8 bass notes over and over for the entire piece. Problem solved with this arrangement because the cello never has to play the bass! 🙌(The piano does, but we get lots of other fun stuff too so it’s ok!) So for all you musicians out there playing weddings, we hope you enjoy playing this arrangement a little more than the ones you were used to…You can get it from www.musicnotes.com. 😊Be sure to let us know in the comments if you do!]]></summary></entry><entry><title type="html">Table example</title><link href="/jekyll-theme-yat/example/2017/12/15/table-example.html" rel="alternate" type="text/html" title="Table example" /><published>2017-12-15T00:00:00+00:00</published><updated>2017-12-15T00:00:00+00:00</updated><id>/jekyll-theme-yat/example/2017/12/15/table-example</id><content type="html" xml:base="/jekyll-theme-yat/example/2017/12/15/table-example.html"><![CDATA[<h2 id="table-example-as-below">Table example as below</h2>
+
+<p><strong>For now, these extended features are provided:</strong></p>
+
+<ul>
+  <li>Cells spanning multiple columns</li>
+  <li>Cells spanning multiple rows</li>
+  <li>Cells text align separately</li>
+  <li>Table header not required</li>
+  <li>Grouped table header rows or data rows</li>
+</ul>
+
+<h3 id="rowspan-and-colspan">Rowspan and Colspan</h3>
+<p>^^ in a cell indicates it should be merged with the cell above.<br />
+This feature is contributed by <a href="https://github.com/pmccloghrylaing">pmccloghrylaing</a>.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: right">Stage</th>
+      <th style="text-align: right">Direct Products</th>
+      <th style="text-align: right">ATP Yields</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: right">Glycolysis</td>
+      <td style="text-align: right">2 ATP                   |</td>
+      <td style="text-align: right"> </td>
+    </tr>
+    <tr>
+      <td style="text-align: right">^^</td>
+      <td style="text-align: right">2 NADH</td>
+      <td style="text-align: right">3–5 ATP</td>
+    </tr>
+    <tr>
+      <td style="text-align: right">Pyruvaye oxidation</td>
+      <td style="text-align: right">2 NADH</td>
+      <td style="text-align: right">5 ATP</td>
+    </tr>
+    <tr>
+      <td style="text-align: right">Citric acid cycle</td>
+      <td style="text-align: right">2 ATP           |</td>
+      <td style="text-align: right"> </td>
+    </tr>
+    <tr>
+      <td style="text-align: right">^^</td>
+      <td style="text-align: right">6 NADH</td>
+      <td style="text-align: right">15 ATP</td>
+    </tr>
+    <tr>
+      <td style="text-align: right">^^</td>
+      <td style="text-align: right">2 FADH</td>
+      <td style="text-align: right">3 ATP</td>
+    </tr>
+    <tr>
+      <td style="text-align: right">30–32 ATP                         ||</td>
+      <td style="text-align: right"> </td>
+      <td style="text-align: right"> </td>
+    </tr>
+  </tbody>
+</table>
+
+<p>[ Net ATP yields per hexose]</p>
+
+<h3 id="multiline">Multiline</h3>
+<p>A backslash at end to join cell contents with the following lines.<br />
+This feature is contributed by <a href="https://github.com/Lucas-C">Lucas-C</a>.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: left">:     Easy Multiline     :||</th>
+      <th style="text-align: left"> </th>
+      <th style="text-align: left"> </th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: left">Apple</td>
+      <td style="text-align: left">Banana</td>
+      <td style="text-align: left">Orange  \</td>
+    </tr>
+    <tr>
+      <td style="text-align: left">Apple</td>
+      <td style="text-align: left">Banana</td>
+      <td style="text-align: left">Orange  \</td>
+    </tr>
+    <tr>
+      <td style="text-align: left">Apple</td>
+      <td style="text-align: left">Banana</td>
+      <td style="text-align: left">Orange</td>
+    </tr>
+    <tr>
+      <td style="text-align: left">Apple</td>
+      <td style="text-align: left">Banana</td>
+      <td style="text-align: left">Orange  \</td>
+    </tr>
+    <tr>
+      <td style="text-align: left">Apple</td>
+      <td style="text-align: left">Banana</td>
+      <td style="text-align: left">Orange</td>
+    </tr>
+    <tr>
+      <td style="text-align: left">Apple</td>
+      <td style="text-align: left">Banana</td>
+      <td style="text-align: left">Orange</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 id="headerless">Headerless</h3>
+<p>Table header can be eliminated.</p>
+
+<table>
+  <tbody>
+    <tr>
+      <td>♜</td>
+      <td> </td>
+      <td>♝</td>
+      <td>♛</td>
+      <td>♚</td>
+      <td>♝</td>
+      <td>♞</td>
+      <td>♜</td>
+    </tr>
+    <tr>
+      <td> </td>
+      <td>♟</td>
+      <td>♟</td>
+      <td>♟</td>
+      <td> </td>
+      <td>♟</td>
+      <td>♟</td>
+      <td>♟</td>
+    </tr>
+    <tr>
+      <td>♟</td>
+      <td> </td>
+      <td>♞</td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td> </td>
+      <td>♗</td>
+      <td> </td>
+      <td> </td>
+      <td>♟</td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td>♙</td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td> </td>
+      <td>♘</td>
+      <td> </td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>♙</td>
+      <td>♙</td>
+      <td>♙</td>
+      <td>♙</td>
+      <td> </td>
+      <td>♙</td>
+      <td>♙</td>
+      <td>♙</td>
+    </tr>
+    <tr>
+      <td>♖</td>
+      <td>♘</td>
+      <td>♗</td>
+      <td>♕</td>
+      <td>♔</td>
+      <td> </td>
+      <td> </td>
+      <td>♖</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="language-markdown highlighter-rouge"><div class="highlight"><pre class="highlight"><code>|:     Fruits <span class="se">\|\|</span> Food           :|||
+|:-------- |:-------- |:------------ |
+| Apple    |: Apple  :|    Apple     <span class="err">\</span>
+| Banana   |  Banana  |    Banana    <span class="err">\</span>
+| Orange   |  Orange  |    Orange    |
+|:   Rowspan is 5   :||:  How's it? :|
+|^^   A. Peach       ||^^ 1. Fine    |
+|^^   B. Orange      ||^^ 2. Bad  $I = <span class="se">\i</span>nt <span class="se">\r</span>ho R^{2} dV$     |
+|^^   C. Banana      ||   It's OK! !<span class="p">[</span><span class="nv">example image</span><span class="p">][</span><span class="ss">my-image</span><span class="p">]</span>  |
+</code></pre></div></div>
+
+<h3 id="text-alignment">Text Alignment</h3>
+<p>Table cell can be set alignment separately.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: left">\:Fruits         |</th>
+      <th style="text-align: left">Food   :</th>
+      <th style="text-align: left"> </th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: left">Apple</td>
+      <td style="text-align: left">Banana</td>
+      <td style="text-align: left">Orange</td>
+    </tr>
+    <tr>
+      <td style="text-align: left">Apple</td>
+      <td style="text-align: left">Banana</td>
+      <td style="text-align: left">Orange</td>
+    </tr>
+  </tbody>
+</table>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: left"> </th>
+      <th style="text-align: left">Fruits\::        |</th>
+      <th style="text-align: left"> </th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: left">Apple</td>
+      <td style="text-align: left">Banana</td>
+      <td style="text-align: left">Orange</td>
+    </tr>
+    <tr>
+      <td style="text-align: left">Apple</td>
+      <td style="text-align: left">Banana</td>
+      <td style="text-align: left">Orange</td>
+    </tr>
+  </tbody>
+</table>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: left">: \:Fruits       :|</th>
+      <th style="text-align: left"> </th>
+      <th style="text-align: left">:       Food     :|</th>
+      <th style="text-align: left"> </th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: left">Apple</td>
+      <td style="text-align: left">Banana</td>
+      <td style="text-align: left">Orange</td>
+      <td style="text-align: left">:   Strawberry    :</td>
+    </tr>
+    <tr>
+      <td style="text-align: left">Apple  &amp;  Banana |</td>
+      <td style="text-align: left">^^</td>
+      <td style="text-align: left">Peach        :|</td>
+      <td style="text-align: left"> </td>
+    </tr>
+  </tbody>
+</table>
+
+<table>
+  <tbody>
+    <tr>
+      <td>: \:Fruits       :|</td>
+      <td> </td>
+      <td>:       Food     :|</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td>Apple</td>
+      <td>Banana</td>
+      <td>Orange</td>
+      <td>:   Strawberry    :</td>
+    </tr>
+  </tbody>
+</table>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: left">:     Fruits || Food           :||</th>
+      <th style="text-align: left"> </th>
+      <th style="text-align: left"> </th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: left">Apple</td>
+      <td style="text-align: left">: Apple  :</td>
+      <td style="text-align: left">Apple     \</td>
+    </tr>
+    <tr>
+      <td style="text-align: left">Banana</td>
+      <td style="text-align: left">Banana</td>
+      <td style="text-align: left">Banana    \</td>
+    </tr>
+    <tr>
+      <td style="text-align: left">Orange</td>
+      <td style="text-align: left">Orange</td>
+      <td style="text-align: left">Orange</td>
+    </tr>
+    <tr>
+      <td style="text-align: left">:   Rowspan is 5   :|</td>
+      <td style="text-align: left">:  How’s it? :</td>
+      <td style="text-align: left"> </td>
+    </tr>
+    <tr>
+      <td style="text-align: left">^^   A. Peach       |</td>
+      <td style="text-align: left">^^ 1. Fine</td>
+      <td style="text-align: left"> </td>
+    </tr>
+    <tr>
+      <td style="text-align: left">^^   B. Orange      |</td>
+      <td style="text-align: left">^^ 2. Bad  $I = \int \rho R^{2} dV$</td>
+      <td style="text-align: left"> </td>
+    </tr>
+    <tr>
+      <td style="text-align: left">^^   C. Banana      |</td>
+      <td style="text-align: left">It’s OK! ![example image](http://www.unexpected-vortices.com/sw/rippledoc/example-image.jpg "An exemplary image")</td>
+      <td style="text-align: left"> </td>
+    </tr>
+  </tbody>
+</table>]]></content><author><name>GitHub User</name></author><category term="example" /><category term="table" /><summary type="html"><![CDATA[Table example as below]]></summary></entry><entry><title type="html">Mermaid example</title><link href="/jekyll-theme-yat/example/2017/12/08/mermaid-example.html" rel="alternate" type="text/html" title="Mermaid example" /><published>2017-12-08T00:00:00+00:00</published><updated>2017-12-08T00:00:00+00:00</updated><id>/jekyll-theme-yat/example/2017/12/08/mermaid-example</id><content type="html" xml:base="/jekyll-theme-yat/example/2017/12/08/mermaid-example.html"><![CDATA[<h3 id="1-pie-chart">1. Pie chart</h3>
+
+<p><img class="mermaid" src="https://mermaid.ink/svg/eyJjb2RlIjoicGllIHRpdGxlIFBldHMgYWRvcHRlZCBieSB2b2x1bnRlZXJzXG5cIkRvZ3NcIiA6IDM4NlxuXCJDYXRzXCIgOiA4NVxuXCJSYXRzXCIgOiAzNSIsIm1lcm1haWQiOm51bGx9" /></p>
+
+<h3 id="2-sequence-diagram">2. sequence diagram</h3>
+
+<p><img class="mermaid" src="https://mermaid.ink/svg/eyJjb2RlIjoic2VxdWVuY2VEaWFncmFtXG5BbGljZSAtPj4gQm9iOiBIZWxsbyBCb2IsIGhvdyBhcmUgeW91P1xuQm9iLS0-PkpvaG46IEhvdyBhYm91dCB5b3UgSm9obj9cbkJvYi0teCBBbGljZTogSSBhbSBnb29kIHRoYW5rcyFcbkJvYi14IEpvaG46IEkgYW0gZ29vZCB0aGFua3MhXG5Ob3RlIHJpZ2h0IG9mIEpvaG46IEJvYiB0aGlua3MgYSBsb25nPGJyLz5sb25nIHRpbWUsIHNvIGxvbmc8YnIvPnRoYXQgdGhlIHRleHQgZG9lczxici8-bm90IGZpdCBvbiBhIHJvdy5cbiUlLVxuQm9iLS0-QWxpY2U6IENoZWNraW5nIHdpdGggSm9obi4uLlxuQWxpY2UtPkpvaG46IFllcy4uLiBKb2huLCBob3cgYXJlIHlvdT8iLCJtZXJtYWlkIjpudWxsfQ" /></p>
+
+<p><img class="mermaid" src="https://mermaid.ink/svg/eyJjb2RlIjoiZ3JhcGggVERcbkFbQ2hyaXN0bWFzXSAtLT58R2V0IG1vbmV5fCBCKEdvIHNob3BwaW5nKVxuQiAtLT4gQ3tMZXQgbWUgdGhpbmt9XG5DIC0tPnxPbmV8IERbTGFwdG9wXVxuQyAtLT58VHdvfCBFW2lQaG9uZV1cbkMgLS0-fFRocmVlfCBGW2ZhOmZhLWNhciBDYXJdIiwibWVybWFpZCI6bnVsbH0" /></p>
+
+<h3 id="3-class-diagram">3. Class diagram</h3>
+<p><img class="mermaid" src="https://mermaid.ink/svg/eyJjb2RlIjoiY2xhc3NEaWFncmFtXG5BbmltYWwgPHwtLSBEdWNrXG5BbmltYWwgPHwtLSBGaXNoXG5BbmltYWwgPHwtLSBaZWJyYVxuQW5pbWFsIDogK2ludCBhZ2VcbkFuaW1hbCA6ICtTdHJpbmcgZ2VuZGVyXG5BbmltYWw6ICtpc01hbW1hbCgpXG5BbmltYWw6ICttYXRlKClcbmNsYXNzIER1Y2t7XG4rU3RyaW5nIGJlYWtDb2xvclxuK3N3aW0oKVxuK3F1YWNrKClcbn1cbmNsYXNzIEZpc2h7XG4taW50IHNpemVJbkZlZXRcbi1jYW5FYXQoKVxufVxuY2xhc3MgWmVicmF7XG4rYm9vbCBpc193aWxkXG4rcnVuKClcbn0iLCJtZXJtYWlkIjpudWxsfQ" /></p>
+
+<h3 id="4-state-diagram">4. State diagram</h3>
+<p><img class="mermaid" src="https://mermaid.ink/svg/eyJjb2RlIjoic3RhdGVEaWFncmFtXG5bKl0gLS0-IFN0aWxsXG5TdGlsbCAtLT4gWypdXG4lJS1cblN0aWxsIC0tPiBNb3Zpbmdcbk1vdmluZyAtLT4gU3RpbGxcbk1vdmluZyAtLT4gQ3Jhc2hcbkNyYXNoIC0tPiBbKl0iLCJtZXJtYWlkIjpudWxsfQ" /></p>]]></content><author><name>GitHub User</name></author><category term="example" /><category term="mermaid" /><summary type="html"><![CDATA[1. Pie chart]]></summary></entry><entry><title type="html">Plantuml example</title><link href="/jekyll-theme-yat/example/2017/12/04/plantuml-example.html" rel="alternate" type="text/html" title="Plantuml example" /><published>2017-12-04T00:00:00+00:00</published><updated>2017-12-04T00:00:00+00:00</updated><id>/jekyll-theme-yat/example/2017/12/04/plantuml-example</id><content type="html" xml:base="/jekyll-theme-yat/example/2017/12/04/plantuml-example.html"><![CDATA[<h2 id="my-first-plantuml">My First PlantUML</h2>
+
+<h3 id="plantuml-block-1">PlantUML Block-1</h3>
+<p><img class="plantuml" src="http://www.plantuml.com/plantuml/svg/~h407374617274756d6c0a426f62202d3e20416c696365203a2068656c6c6f0a40656e64756d6c" /></p>
+
+<h3 id="plantuml-block-2">PlantUML Block-2</h3>
+<p><img class="plantuml" src="http://www.plantuml.com/plantuml/svg/~h407374617274756d6c0a426f62202d3e20416c696365203a2068656c6c6f20776f726c640a40656e64756d6c" /></p>
+
+<h3 id="plantuml-block-3">PlantUML Block-3</h3>
+<p><img class="plantuml" src="http://www.plantuml.com/plantuml/svg/~h407374617274756d6c0a282a29202d2d3e2022496e697469616c697a6174696f6e220a0a69662022536f6d65205465737422207468656e0a20202d2d3e5b747275655d2022536f6d65204163746976697479220a20202d2d3e2022416e6f74686572206163746976697479220a20202d72696768742d3e20282a290a656c73650a20202d3e5b66616c73655d2022536f6d657468696e6720656c7365220a20202d2d3e5b456e64696e672070726f636573735d20282a290a656e6469660a40656e64756d6c" /></p>
+
+<h3 id="plantuml-block-4">PlantUML Block-4</h3>
+
+<p><img class="plantuml" src="http://www.plantuml.com/plantuml/svg/~h407374617274756d6c0a736b696e706172616d2068616e647772697474656e20747275650a0a736b696e706172616d2075736563617365207b0a20204261636b67726f756e64436f6c6f72204461726b536561477265656e0a2020426f72646572436f6c6f72204461726b536c617465477261790a0a20204261636b67726f756e64436f6c6f723c3c204d61696e203e3e2059656c6c6f77477265656e0a2020426f72646572436f6c6f723c3c204d61696e203e3e2059656c6c6f77477265656e0a0a20204172726f77436f6c6f72204f6c6976650a20204163746f72426f72646572436f6c6f7220626c61636b0a20204163746f72466f6e744e616d6520436f75726965720a0a20204163746f724261636b67726f756e64436f6c6f723c3c2048756d616e203e3e20476f6c640a7d0a0a55736572203c3c2048756d616e203e3e0a3a4d61696e2044617461626173653a206173204d7953716c203c3c204170706c69636174696f6e203e3e0a28537461727429203c3c204f6e652053686f74203e3e0a2855736520746865206170706c69636174696f6e29206173202855736529203c3c204d61696e203e3e0a0a55736572202d3e20285374617274290a55736572202d2d3e2028557365290a0a4d7953716c202d2d3e2028557365290a0a40656e64756d6c" /></p>]]></content><author><name>GitHub User</name></author><category term="example" /><category term="plantuml" /><summary type="html"><![CDATA[My First PlantUML]]></summary></entry><entry><title type="html">Quick markdown example</title><link href="/jekyll-theme-yat/markdown/2017/06/10/quick-mardown-example.html" rel="alternate" type="text/html" title="Quick markdown example" /><published>2017-06-10T00:00:00+00:00</published><updated>2017-06-10T00:00:00+00:00</updated><id>/jekyll-theme-yat/markdown/2017/06/10/quick-mardown-example</id><content type="html" xml:base="/jekyll-theme-yat/markdown/2017/06/10/quick-mardown-example.html"><![CDATA[<p>Paragraphs are separated by a blank line.</p>
+
+<p>2nd paragraph. <em>Italic</em>, <strong>bold</strong>, and <code class="language-plaintext highlighter-rouge">monospace</code>. Itemized lists
+look like:</p>
+
+<ul>
+  <li>this one</li>
+  <li>that one</li>
+  <li>the other one</li>
+</ul>
+
+<p>Note that — not considering the asterisk — the actual text
+content starts at 4-columns in.</p>
+
+<blockquote>
+  <p>Block quotes are
+written like so.</p>
+
+  <p>They can span multiple paragraphs,
+if you like.</p>
+</blockquote>
+
+<p>Use 3 dashes for an em-dash. Use 2 dashes for ranges (ex., “it’s all
+in chapters 12–14”). Three dots … will be converted to an ellipsis.
+Unicode is supported. ☺</p>
+
+<h2 id="an-h2-header">An h2 header</h2>
+
+<p>Here’s a numbered list:</p>
+
+<ol>
+  <li>first item</li>
+  <li>second item</li>
+  <li>third item</li>
+</ol>
+
+<p>Note again how the actual text starts at 4 columns in (4 characters
+from the left side). Here’s a code sample:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code># Let me re-iterate ...
+for i in 1 .. 10 { do-something(i) }
+</code></pre></div></div>
+
+<p>As you probably guessed, indented 4 spaces. By the way, instead of
+indenting the block, you can use delimited blocks, if you like:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>define foobar() {
+    print "Welcome to flavor country!";
+}
+</code></pre></div></div>
+
+<p>(which makes copying &amp; pasting easier). You can optionally mark the
+delimited block for Pandoc to syntax highlight it:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">time</span>
+<span class="c1"># Quick, count to ten!
+</span><span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">):</span>
+    <span class="c1"># (but not *too* quick)
+</span>    <span class="n">time</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.5</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+</code></pre></div></div>
+
+<h3 id="an-h3-header">An h3 header</h3>
+
+<p>Now a nested list:</p>
+
+<ol>
+  <li>
+    <p>First, get these ingredients:</p>
+
+    <ul>
+      <li>carrots</li>
+      <li>celery</li>
+      <li>lentils</li>
+    </ul>
+  </li>
+  <li>
+    <p>Boil some water.</p>
+  </li>
+  <li>
+    <p>Dump everything in the pot and follow
+this algorithm:</p>
+
+    <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>find wooden spoon
+uncover pot
+stir
+cover pot
+balance wooden spoon precariously on pot handle
+wait 10 minutes
+goto first step (or shut off burner when done)
+</code></pre></div>    </div>
+
+    <p>Do not bump wooden spoon or it will fall.</p>
+  </li>
+</ol>
+
+<p>Notice again how text always lines up on 4-space indents (including
+that last line which continues item 3 above).</p>
+
+<p>Here’s a link to <a href="http://foo.bar">a website</a>, to a <a href="local-doc.html">local
+doc</a>, and to a <a href="#an-h2-header">section heading in the current
+doc</a>. Here’s a footnote <sup id="fnref:1" role="doc-noteref"><a href="#fn:1" class="footnote" rel="footnote">1</a></sup>.</p>
+
+<p>Tables can look like this:</p>
+
+<p>Name           Size  Material      Color
+————- —–  ————  ————
+All Business      9  leather       brown
+Roundabout       10  hemp canvas   natural
+Cinderella       11  glass         transparent</p>
+
+<p>Table: Shoes sizes, materials, and colors.</p>
+
+<p>(The above is the caption for the table.) Pandoc also supports
+multi-line tables:</p>
+
+<hr />
+<p>Keyword   Text
+——–  ———————–
+red       Sunsets, apples, and
+          other red or reddish
+          things.</p>
+
+<p>green     Leaves, grass, frogs
+          and other things it’s
+          not easy being.
+——–  ———————–</p>
+
+<p>A horizontal rule follows.</p>
+
+<hr />
+
+<p>Here’s a definition list:</p>
+
+<dl>
+  <dt>apples</dt>
+  <dd>Good for making applesauce.</dd>
+  <dt>oranges</dt>
+  <dd>Citrus!</dd>
+  <dt>tomatoes</dt>
+  <dd>There’s no “e” in tomatoe.</dd>
+</dl>
+
+<p>Again, text is indented 4 spaces. (Put a blank line between each
+term and  its definition to spread things out more.)</p>
+
+<p>Here’s a “line block” (note how whitespace is honored):</p>
+
+<table>
+  <tbody>
+    <tr>
+      <td>Line one</td>
+    </tr>
+    <tr>
+      <td>Line too</td>
+    </tr>
+    <tr>
+      <td>Line tree</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>and images can be specified like so:</p>
+
+<p><img src="https://user-images.githubusercontent.com/9413601/123900693-1d9ebd00-d99c-11eb-8e9e-cf7879187606.png" alt="example image" title="An exemplary image" /></p>
+
+<p>Inline math equation: $\omega = d\phi / dt$. Display
+math should get its own line like so:</p>
+
+<p>$$I = \int \rho R^{2} dV$$</p>
+
+<p>And note that you can backslash-escape any punctuation characters
+which you wish to be displayed literally, ex.: `foo`, *bar*, etc.</p>
+<div class="footnotes" role="doc-endnotes">
+  <ol>
+    <li id="fn:1" role="doc-endnote">
+      <p>Some footnote text. <a href="#fnref:1" class="reversefootnote" role="doc-backlink">&#8617;</a></p>
+    </li>
+  </ol>
+</div>]]></content><author><name>GitHub User</name></author><category term="markdown" /><category term="example" /><summary type="html"><![CDATA[Paragraphs are separated by a blank line.]]></summary></entry><entry><title type="html">This post demonstrates post content styles</title><link href="/jekyll-theme-yat/junk/2017/05/20/this-post-demonstrates-post-content-styles.html" rel="alternate" type="text/html" title="This post demonstrates post content styles" /><published>2017-05-20T00:00:00+00:00</published><updated>2017-05-20T00:00:00+00:00</updated><id>/jekyll-theme-yat/junk/2017/05/20/this-post-demonstrates-post-content-styles</id><content type="html" xml:base="/jekyll-theme-yat/junk/2017/05/20/this-post-demonstrates-post-content-styles.html"><![CDATA[<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce bibendum neque eget nunc mattis eu sollicitudin enim tincidunt. Vestibulum lacus tortor, ultricies id dignissim ac, bibendum in velit.</p>
+
+<h2 id="some-great-heading-h2">Some great heading (h2)</h2>
+
+<p>Proin convallis mi ac felis pharetra aliquam. Curabitur dignissim accumsan rutrum. In arcu magna, aliquet vel pretium et, molestie et arcu.</p>
+
+<p>Mauris lobortis nulla et felis ullamcorper bibendum. Phasellus et hendrerit mauris. Proin eget nibh a massa vestibulum pretium. Suspendisse eu nisl a ante aliquet bibendum quis a nunc. Praesent varius interdum vehicula. Aenean risus libero, placerat at vestibulum eget, ultricies eu enim. Praesent nulla tortor, malesuada adipiscing adipiscing sollicitudin, adipiscing eget est.</p>
+
+<h2 id="another-great-heading-h2">Another great heading (h2)</h2>
+
+<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce bibendum neque eget nunc mattis eu sollicitudin enim tincidunt. Vestibulum lacus tortor, ultricies id dignissim ac, bibendum in velit.</p>
+
+<h3 id="some-great-subheading-h3">Some great subheading (h3)</h3>
+
+<p>Proin convallis mi ac felis pharetra aliquam. Curabitur dignissim accumsan rutrum. In arcu magna, aliquet vel pretium et, molestie et arcu. Mauris lobortis nulla et felis ullamcorper bibendum.</p>
+
+<p>Phasellus et hendrerit mauris. Proin eget nibh a massa vestibulum pretium. Suspendisse eu nisl a ante aliquet bibendum quis a nunc.</p>
+
+<h3 id="some-great-subheading-h3-1">Some great subheading (h3)</h3>
+
+<p>Praesent varius interdum vehicula. Aenean risus libero, placerat at vestibulum eget, ultricies eu enim. Praesent nulla tortor, malesuada adipiscing adipiscing sollicitudin, adipiscing eget est.</p>
+
+<blockquote>
+  <p>This quote will change your life. It will reveal the secrets of the universe, and all the wonders of humanity. Don’t misuse it.</p>
+</blockquote>
+
+<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce bibendum neque eget nunc mattis eu sollicitudin enim tincidunt.</p>
+
+<h3 id="some-great-subheading-h3-2">Some great subheading (h3)</h3>
+
+<p>Vestibulum lacus tortor, ultricies id dignissim ac, bibendum in velit. Proin convallis mi ac felis pharetra aliquam. Curabitur dignissim accumsan rutrum.</p>
+
+<div class="language-html highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nt">&lt;html&gt;</span>
+  <span class="nt">&lt;head&gt;</span> <span class="nt">&lt;/head&gt;</span>
+  <span class="nt">&lt;body&gt;</span>
+    <span class="nt">&lt;p&gt;</span>Hello, World!<span class="nt">&lt;/p&gt;</span>
+  <span class="nt">&lt;/body&gt;</span>
+<span class="nt">&lt;/html&gt;</span>
+</code></pre></div></div>
+
+<p>In arcu magna, aliquet vel pretium et, molestie et arcu. Mauris lobortis nulla et felis ullamcorper bibendum. Phasellus et hendrerit mauris.</p>
+
+<h4 id="you-might-want-a-sub-subheading-h4">You might want a sub-subheading (h4)</h4>
+
+<p>In arcu magna, aliquet vel pretium et, molestie et arcu. Mauris lobortis nulla et felis ullamcorper bibendum. Phasellus et hendrerit mauris.</p>
+
+<p>In arcu magna, aliquet vel pretium et, molestie et arcu. Mauris lobortis nulla et felis ullamcorper bibendum. Phasellus et hendrerit mauris.</p>
+
+<h4 id="but-its-probably-overkill-h4">But it’s probably overkill (h4)</h4>
+
+<p>In arcu magna, aliquet vel pretium et, molestie et arcu. Mauris lobortis nulla et felis ullamcorper bibendum. Phasellus et hendrerit mauris.</p>
+
+<h3 id="oh-hai-an-unordered-list">Oh hai, an unordered list!!</h3>
+
+<p>In arcu magna, aliquet vel pretium et, molestie et arcu. Mauris lobortis nulla et felis ullamcorper bibendum. Phasellus et hendrerit mauris.</p>
+
+<ul>
+  <li>First item, yo</li>
+  <li>Second item, dawg</li>
+  <li>Third item, what what?!</li>
+  <li>Fourth item, fo sheezy my neezy</li>
+</ul>
+
+<h3 id="oh-hai-an-ordered-list">Oh hai, an ordered list!!</h3>
+
+<p>In arcu magna, aliquet vel pretium et, molestie et arcu. Mauris lobortis nulla et felis ullamcorper bibendum. Phasellus et hendrerit mauris.</p>
+
+<ol>
+  <li>First item, yo</li>
+  <li>Second item, dawg</li>
+  <li>Third item, what what?!</li>
+  <li>Fourth item, fo sheezy my neezy</li>
+</ol>
+
+<h2 id="headings-are-cool-h2">Headings are cool! (h2)</h2>
+
+<p>Proin eget nibh a massa vestibulum pretium. Suspendisse eu nisl a ante aliquet bibendum quis a nunc. Praesent varius interdum vehicula. Aenean risus libero, placerat at vestibulum eget, ultricies eu enim. Praesent nulla tortor, malesuada adipiscing adipiscing sollicitudin, adipiscing eget est.</p>
+
+<p>Praesent nulla tortor, malesuada adipiscing adipiscing sollicitudin, adipiscing eget est.</p>
+
+<p>Proin eget nibh a massa vestibulum pretium. Suspendisse eu nisl a ante aliquet bibendum quis a nunc.</p>
+
+<h3 id="tables">Tables</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Title 1</th>
+      <th>Title 2</th>
+      <th>Title 3</th>
+      <th>Title 4</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>lorem</td>
+      <td>lorem ipsum</td>
+      <td>lorem ipsum dolor</td>
+      <td>lorem ipsum dolor sit</td>
+    </tr>
+    <tr>
+      <td>lorem ipsum dolor sit</td>
+      <td>lorem ipsum dolor sit</td>
+      <td>lorem ipsum dolor sit</td>
+      <td>lorem ipsum dolor sit</td>
+    </tr>
+    <tr>
+      <td>lorem ipsum dolor sit</td>
+      <td>lorem ipsum dolor sit</td>
+      <td>lorem ipsum dolor sit</td>
+      <td>lorem ipsum dolor sit</td>
+    </tr>
+    <tr>
+      <td>lorem ipsum dolor sit</td>
+      <td>lorem ipsum dolor sit</td>
+      <td>lorem ipsum dolor sit</td>
+      <td>lorem ipsum dolor sit</td>
+    </tr>
+  </tbody>
+</table>
+
+<table>
+  <thead>
+    <tr>
+      <th>Title 1</th>
+      <th>Title 2</th>
+      <th>Title 3</th>
+      <th>Title 4</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>lorem</td>
+      <td>lorem ipsum</td>
+      <td>lorem ipsum dolor</td>
+      <td>lorem ipsum dolor sit</td>
+    </tr>
+    <tr>
+      <td>lorem ipsum dolor sit amet</td>
+      <td>lorem ipsum dolor sit amet consectetur</td>
+      <td>lorem ipsum dolor sit amet</td>
+      <td>lorem ipsum dolor sit</td>
+    </tr>
+    <tr>
+      <td>lorem ipsum dolor</td>
+      <td>lorem ipsum</td>
+      <td>lorem</td>
+      <td>lorem ipsum</td>
+    </tr>
+    <tr>
+      <td>lorem ipsum dolor</td>
+      <td>lorem ipsum dolor sit</td>
+      <td>lorem ipsum dolor sit amet</td>
+      <td>lorem ipsum dolor sit amet consectetur</td>
+    </tr>
+  </tbody>
+</table>]]></content><author><name>Bart Simpson</name></author><category term="junk" /><summary type="html"><![CDATA[Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce bibendum neque eget nunc mattis eu sollicitudin enim tincidunt. Vestibulum lacus tortor, ultricies id dignissim ac, bibendum in velit.]]></summary></entry></feed>

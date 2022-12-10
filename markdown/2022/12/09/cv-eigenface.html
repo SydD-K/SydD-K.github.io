@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="google-translate-customization" content="108d9124921d80c3-80e20d618ff053c8-g4f02ec6f3dba68b7-c">
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>opencv C++ 实现 Eigenface | Syd’s blog</title>
+<meta name="generator" content="Jekyll v4.3.1">
+<meta property="og:title" content="opencv C++ 实现 Eigenface">
+<meta name="author" content="GitHub User">
+<meta property="og:locale" content="en_US">
+<meta name="description" content="实验原理">
+<meta property="og:description" content="实验原理">
+<link rel="canonical" href="/jekyll-theme-yat/markdown/2022/12/09/cv-eigenface.html">
+<meta property="og:url" content="/jekyll-theme-yat/markdown/2022/12/09/cv-eigenface.html">
+<meta property="og:site_name" content="Syd’s blog">
+<meta property="og:type" content="article">
+<meta property="article:published_time" content="2022-12-09T00:00:00+00:00">
+<meta name="twitter:card" content="summary">
+<meta property="twitter:title" content="opencv C++ 实现 Eigenface">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"GitHub User"},"dateModified":"2022-12-09T00:00:00+00:00","datePublished":"2022-12-09T00:00:00+00:00","description":"实验原理","headline":"opencv C++ 实现 Eigenface","mainEntityOfPage":{"@type":"WebPage","@id":"/jekyll-theme-yat/markdown/2022/12/09/cv-eigenface.html"},"url":"/jekyll-theme-yat/markdown/2022/12/09/cv-eigenface.html"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="icon" href="">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/typeface-noto-sans@0.0.72/index.min.css">
+  <link rel="stylesheet" href="/jekyll-theme-yat/assets/css/main.css">
+  <script src="/jekyll-theme-yat/assets/js/main.js"></script><link type="application/atom+xml" rel="alternate" href="/jekyll-theme-yat/feed.xml" title="Syd's blog">
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/styles/default.min.css">
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/highlight.min.js"></script>
+<!-- and it's easy to individually load additional languages -->
+<script charset="UTF-8" src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/languages/go.min.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<script>
+// Init highlight js
+document.addEventListener('DOMContentLoaded', function(event) {
+  var els = document.querySelectorAll('pre code')
+
+  function addLangData(block) {
+    var outer = block.parentElement.parentElement.parentElement;
+    var lang = block.getAttribute('data-lang');
+    for (var i = 0; i < outer.classList.length; i++) {
+      var cls = outer.classList[i];
+      if (cls.startsWith('language-')) {
+        lang = cls;
+        break;
+      }
+    }
+    if (!lang) {
+      cls = block.getAttribute('class');
+      lang = cls ? cls.replace('hljs ', '') : '';
+    }
+    if (lang.startsWith('language-')) {
+      lang = lang.substr(9);
+    }
+    block.setAttribute('class', 'hljs ' + lang);
+    block.parentNode.setAttribute('data-lang', lang);
+  }
+
+  function addBadge(block) {
+    var enabled = ('true' || 'true').toLowerCase();
+    if (enabled == 'true') {
+      var pre = block.parentElement;
+      pre.classList.add('badge');
+    }
+  }
+
+  function handle(block) {
+    addLangData(block);
+    addBadge(block)
+    hljs.highlightBlock(block);
+  }
+
+  for (var i = 0; i < els.length; i++) {
+    var el = els[i];
+    handle(el);
+  }
+});
+</script>
+
+<style>
+  /* code language badge */
+  pre.badge::before {
+    content: attr(data-lang);
+    color: #fff;
+    background-color: #ff4e00;
+    padding: 0 .5em;
+    border-radius: 0 2px;
+    text-transform: uppercase;
+    text-align: center;
+    min-width: 32px;
+    display: inline-block;
+    position: absolute;
+    right: 0;
+  }
+
+  /* fix wrong badge display for firefox browser */
+  code > table pre::before {
+    display: none;
+  }
+</style>
+<script type="text/x-mathjax-config">MathJax.Hub.Config({tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}});</script>
+  <script type="text/javascript" async src="//cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+<script>MathJax={"tex":{"inlineMath":[["$","$"],["\\(","\\)"]],"displayMath":[["$$","$$"],["\\[","\\]"]]},"svg":{"fontCache":"global"}}</script><script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script><script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<header class="site-header " role="banner">
+
+  <div class="wrapper">
+    <div class="site-header-inner">
+<span class="site-brand"><a class="site-brand-inner" rel="author" href="/jekyll-theme-yat/">
+  <img class="site-favicon" title="Syd's blog" src="" onerror="this.style.display='none'">
+  Syd's blog
+</a>
+</span><nav class="site-nav">
+          <input type="checkbox" id="nav-trigger" class="nav-trigger">
+          <label for="nav-trigger">
+            <span class="menu-icon">
+              <svg viewbox="0 0 18 15" width="18px" height="15px">
+                <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"></path>
+              </svg>
+            </span>
+          </label>
+
+          <div class="trigger">
+<a class="page-link" href="/jekyll-theme-yat/about.html">ABOUT</a><a class="page-link" href="/jekyll-theme-yat/archives.html">ARCHIVES</a><a class="page-link" href="/jekyll-theme-yat/categories.html">CATEGORIES</a><a class="page-link" href="/jekyll-theme-yat/">HOME</a><a class="page-link" href="/jekyll-theme-yat/tags.html">TAGS</a>
+
+
+
+
+
+
+
+
+
+<span class="page-link">
+
+
+
+<div id="google_translate_element" style="display: none;">
+</div>
+
+<span class="ct-language">
+  <ul class="list-unstyled ct-language-dropdown">
+    
+      <li>
+        <a href="#" class="lang-select" data-lang="en">
+          
+          <img src="https://cdn.countryflags.com/thumbs/united-states-of-america/flag-400.png" title="English">
+          
+        </a>
+      </li>
+    
+      <li>
+        <a href="#" class="lang-select" data-lang="fr">
+          
+          <img src="https://cdn.countryflags.com/thumbs/france/flag-400.png" title="French">
+          
+        </a>
+      </li>
+    
+      <li>
+        <a href="#" class="lang-select" data-lang="zh-CN">
+          
+          <img src="https://cdn.countryflags.com/thumbs/china/flag-400.png" title="Chinese(Simple)">
+          
+        </a>
+      </li>
+    
+      <li>
+        <a href="#" class="lang-select" data-lang="ja">
+          
+          <img src="https://cdn.countryflags.com/thumbs/japan/flag-400.png" title="Japanese">
+          
+        </a>
+      </li>
+    
+      <li>
+        <a href="#" class="lang-select" data-lang="ko">
+          
+          <img src="https://cdn.countryflags.com/thumbs/south-korea/flag-400.png" title="Korean">
+          
+        </a>
+      </li>
+    
+      <li>
+        <a href="#" class="lang-select" data-lang="ru">
+          
+          <img src="https://cdn.countryflags.com/thumbs/russia/flag-400.png" title="Russian">
+          
+        </a>
+      </li>
+    
+  </ul>
+</span>
+
+<script type="text/javascript">
+function googleTranslateElementInit() {
+  new google.translate.TranslateElement({
+    pageLanguage: 'en',
+    autoDisplay: false,
+    layout: google.translate.TranslateElement.InlineLayout.VERTICAL
+  }, 'google_translate_element');
+
+  // Links to cross-origin destinations are unsafe
+  var gll = document.getElementsByClassName('goog-logo-link')[0];
+  if (gll) {
+    gll.setAttribute('rel', 'noopener');
+  }
+
+  function restoreLang() {
+    var iframe = document.getElementsByClassName('goog-te-banner-frame')[0];
+    if (!iframe) return;
+
+    var innerDoc = iframe.contentDocument || iframe.contentWindow.document;
+    var restore_el = innerDoc.getElementsByTagName("button");
+
+    for (var i = 0; i < restore_el.length; i++) {
+      if (restore_el[i].id.indexOf("restore") >= 0) {
+        restore_el[i].click();
+        var close_el = innerDoc.getElementsByClassName("goog-close-link");
+        close_el[0].click();
+        return;
+      }
+    }
+  }
+
+  function triggerHtmlEvent(element, eventName) {
+    var event;
+    if (document.createEvent) {
+      event = document.createEvent('HTMLEvents');
+      event.initEvent(eventName, true, true);
+      element.dispatchEvent(event);
+    } else {
+      event = document.createEventObject();
+      event.eventType = eventName;
+      element.fireEvent('on' + event.eventType, event);
+    }
+  }
+
+  var googleCombo = document.querySelector("select.goog-te-combo");
+  var langSelect = document.querySelector('.ct-language');
+  langSelect.addEventListener('click', function(event) {
+    if (!event.target) {
+      return;
+    }
+
+    var selected = document.querySelector('.ct-language .ct-language-selected');
+    if (selected) {
+      selected.classList.remove('ct-language-selected');
+    }
+
+    var target = event.target;
+    while (target && target !== langSelect ) {
+      if (target.matches('.lang-select')) {
+        break;
+      }
+      target = target.parentElement;
+    }
+
+    if (target && target.matches('.lang-select')) {
+      var lang = target.getAttribute('data-lang');
+      if (googleCombo.value == lang) {
+        restoreLang();
+      } else {
+        target.parentElement.classList.add('ct-language-selected');
+        googleCombo.value = lang;
+        triggerHtmlEvent(googleCombo, 'change');
+      }
+    }
+
+    event.preventDefault();
+  });
+}
+</script>
+
+<script type="text/javascript" src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+</span>
+</div>
+        </nav>
+</div>
+  </div>
+</header>
+
+<script>
+  function initHeader() {
+    var lastScrollY = getScrollPos().y;
+    var documentElement = document.documentElement;
+
+    function storeScrollData() {
+      var y = getScrollPos().y;var scrollStatus = "";
+
+      if (y <= 0) {
+        scrollStatus = "top";
+      } else if ((window.innerHeight + y) >= document.body.offsetHeight) {
+        scrollStatus = "bottom";
+      } else {
+        var isScrollDown = (y - lastScrollY > 0) ? true : false;
+        scrollStatus = isScrollDown ? "down" : "up";
+      }
+
+      lastScrollY = y;
+      documentElement.setAttribute("data-scroll-status", scrollStatus);
+    }
+
+    window.addEventListener('scroll', function(e) {
+      storeScrollData();
+    });
+
+    storeScrollData();
+  }
+  document.addEventListener('DOMContentLoaded', initHeader);
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<script>
+  function hashLocate(hashValue) {
+    hashValue = hashValue.replace(/^.*#h-/, '');
+    hashValue = decodeURIComponent(hashValue);
+    var element = document.getElementById(hashValue);
+
+    if (!element) {
+      return;
+    }
+
+    var header = document.querySelector('header.site-header');
+    var headerRect = header.getBoundingClientRect();
+    var headerTop = Math.floor(headerRect.top);
+    var headerHeight = Math.floor(headerRect.height);
+    var scrollPos = getScrollPos();
+    var offsetY = element.offsetTop - (headerTop + headerHeight + 20);
+
+    if (offsetY == scrollPos.y) {
+      return;
+    }
+
+    if (headerTop == 0  && offsetY > scrollPos.y) {
+      offsetY += headerHeight + 2;
+    } else if (headerTop < 0  && offsetY < scrollPos.y) {
+      offsetY -= headerHeight - 2;
+    }
+
+    smoothScrollTo(offsetY);
+  }
+
+  // The first event occurred
+  window.addEventListener('load', function(event) {
+    if (window.location.hash) {
+      hashLocate(window.location.hash);
+    }
+  });
+
+  // The first event occurred
+  window.addEventListener('click', function(event) {
+    if (event.target.tagName.toLowerCase() == 'a') {
+      hashLocate(event.target.getAttribute('href'));
+    }
+  });
+</script>
+<div class="theme-toggle">
+  <input type="checkbox" id="theme-switch">
+  <label for="theme-switch">
+    <div class="toggle"></div>
+    <div class="names">
+      <p class="light">Light</p>
+      <p class="dark">Dark</p>
+    </div>
+  </label>
+</div>
+
+
+
+
+<script>
+  (function() {
+    var sw = document.getElementById('theme-switch');
+    var html = document.getElementsByTagName('html')[0];
+    var nightModeOption = ('auto' || 'auto').toLowerCase();
+    var storage = nightModeOption === 'manual'
+        ? localStorage
+        : sessionStorage;
+    var themeData = loadThemeData();
+
+    function saveThemeData(data) {
+      storage.setItem('theme', JSON.stringify(data));
+    }
+
+    function loadThemeData() {
+      var data = storage.getItem('theme');
+      try {
+        data = JSON.parse(data ? data : '');
+      } catch(e) {
+        data = { nightShift: undefined, autoToggleAt: 0 };
+        saveThemeData(data);
+      }
+      return data;
+    }
+
+    function handleThemeToggle(nightShift) {
+      themeData.nightShift = nightShift;
+      saveThemeData(themeData);
+      html.dataset.theme = nightShift ? 'dark' : 'light';
+      setTimeout(function() {
+        sw.checked = nightShift ? true : false;
+      }, 50);
+    }
+
+    function autoThemeToggle() {
+      // Next time point of theme toggle
+      var now = new Date();
+      var toggleAt = new Date();
+      var hours = now.getHours();
+      var nightShift = hours >= 19 || hours <=7;
+
+      if (nightShift) {
+        if (hours > 7) {
+          toggleAt.setDate(toggleAt.getDate() + 1);
+        }
+        toggleAt.setHours(7);
+      } else {
+        toggleAt.setHours(19);
+      }
+
+      toggleAt.setMinutes(0);
+      toggleAt.setSeconds(0);
+      toggleAt.setMilliseconds(0)
+
+      var delay = toggleAt.getTime() - now.getTime();
+
+      // auto toggle theme mode
+      setTimeout(function() {
+        handleThemeToggle(!nightShift);
+      }, delay);
+
+      return {
+        nightShift: nightShift,
+        toggleAt: toggleAt.getTime()
+      };
+    }
+
+    // Listen the theme toggle event
+    sw.addEventListener('change', function(event) {
+      handleThemeToggle(event.target.checked);
+    });
+
+    if (nightModeOption == 'auto') {
+      var data = autoThemeToggle();
+
+      // Toggle theme by local setting
+      if (data.toggleAt > themeData.autoToggleAt) {
+        themeData.autoToggleAt = data.toggleAt;
+        handleThemeToggle(data.nightShift);
+      } else {
+        handleThemeToggle(themeData.nightShift);
+      }
+    } else if (nightModeOption == 'manual') {
+      handleThemeToggle(themeData.nightShift);
+    } else {
+      var nightShift = themeData.nightShift;
+      if (nightShift === undefined) {
+        nightShift = nightModeOption === 'on';
+      }
+      handleThemeToggle(nightShift);
+    }
+  })();
+</script>
+<div id="click-to-top" class="click-to-top">
+  <i class="fa fa-arrow-up"></i>
+</div>
+<script>
+  (function () {
+    const clickToTop = document.getElementById('click-to-top');
+    window.addEventListener('scroll', () => {
+      if (window.scrollY > 100) {
+        clickToTop.classList.add('show')
+      }else {
+        clickToTop.classList.remove('show')
+      }
+    });
+    clickToTop.addEventListener('click', () => {
+      window.smoothScrollTo(0);
+    });
+  })();
+</script>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <div class="framework">
+  <section class="main">
+
+     <div class="post">
+  <section>
+
+
+
+
+
+
+
+
+
+<header class="post-header">
+  <h1 class="post-title p-name" itemprop="name headline">opencv C++ 实现 Eigenface</h1>
+  <h2 class="post-subtitle">CV homework</h2>
+
+  <p class="post-meta">
+    <time class="dt-published" datetime="2022-12-09T00:00:00+00:00" itemprop="datePublished"><i class="fa fa-calendar"></i> Dec 09, 2022
+    </time>
+
+    
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <span class="post-reading-time left-vsplit"><i class="fa fa-clock-o"></i> About 22 mins</span>
+  </p>
+<div class="post-tags"><a class="post-tag" href="/jekyll-theme-yat/tags.html#CV">#CV</a></div></header>
+<article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+    <div class="post-content e-content" itemprop="articleBody">
+
+      <h3 id="实验原理">实验原理</h3>
+
+<p>假设脸均为行向量</p>
+
+<p>对中心化后的样本矩阵（一行为一个样本脸）进行 SVD，得到的右奇异矩阵为一个行与列个数均与图像像素数相同的正交矩阵，一行为一个特征脸，选择其对应奇异值最大的 $p$ 行作为特征脸，组成特征脸矩阵 $A$</p>
+
+<p>将人脸样本 $f$ 映射特征脸空间时，则有 $y_f=fA^T$ ，其中 $y_f$ 则为 $f$ 降维后的结果</p>
+
+<p>若需要进行重构，则有 $f_{re}=y_fA$ ，其中 $f_{re}$ 为重构之后的人脸，也为一个行向量</p>
+
+<p>通过图像在特征脸空间的投影间的欧氏距离大小判断二者的相似程度
+$$
+Distance_k=||Ω−Ω_k||^2
+$$
+其中 $\Omega$ 与 $\Omega_k$ 分别表示两个人脸图像，本实验中 $\Omega$ 为测试集中一个人脸样本的投影结果，$\Omega_k$ 为训练集中的人脸样本投影结果，应将 $k$ 由 $0$ 遍历至 <code class="language-plaintext highlighter-rouge">training_set.size()</code> 找出使 $Distance_k$ 最小的 $k$</p>
+
+<h4 id="本次实验的简单流程是">本次实验的简单流程是</h4>
+
+<ol>
+  <li>读取人脸数据集，将自己的 10 张照片加入其中之后，将其分为训练集和测试集</li>
+  <li>进行预处理，直方图均衡化，中心化（零均值化）</li>
+  <li>训练，求出训练集的特征人脸</li>
+  <li>将训练集的人脸与测试集的人脸均通过特征人脸映射到特征脸空间后，比较二者的欧氏距离，训练集中与每个测试集中的人脸欧氏距离最小的人脸被认为与测试集中对应的人脸是同一个人</li>
+  <li>将一个人脸通过特征人脸映射到特征脸空间后，再通过得到的结果重构出原先的人脸</li>
+</ol>
+
+<h3 id="实验步骤">实验步骤</h3>
+
+<h4 id="读入图片">读入图片</h4>
+
+<p>首先读入AT&amp;T图片文件，全部存入由 <code class="language-plaintext highlighter-rouge">Mat</code> 矩阵组成的数组 <code class="language-plaintext highlighter-rouge">faces</code> 中，同时进行眼睛对齐。实现眼睛对齐的方法即为仿射变换，读取每张图像的同时也读取其眼睛的位置，以第一张图像的眼睛位置为基准，通过仿射变换的方式将每张图像的双眼对齐。由于仿射变换需要三角形作为基准，因此我选择了每张图像两眼中点偏上 20 像素的位置作为基准，这样取相对位置可以尽可能减小仿射变换导致的人脸的大幅度倾斜与变形</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">int</span> <span class="nf">main</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="n">Mat</span> <span class="n">faces</span><span class="p">[</span><span class="n">FACNUM</span> <span class="o">*</span> <span class="n">PICNUM</span><span class="p">];</span>
+    <span class="n">vector</span><span class="o">&lt;</span><span class="n">Mat</span><span class="o">&gt;</span> <span class="n">training_set</span><span class="p">;</span>
+    <span class="n">vector</span><span class="o">&lt;</span><span class="n">Mat</span><span class="o">&gt;</span> <span class="n">test_set</span><span class="p">;</span>
+    <span class="n">vector</span><span class="o">&lt;</span><span class="n">Mat</span><span class="o">&gt;</span> <span class="n">reconstruct_set</span><span class="p">;</span>
+    <span class="n">Point</span> <span class="n">eye1</span><span class="p">;</span>
+    <span class="n">Point</span> <span class="n">eye2</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">size</span> <span class="o">=</span> <span class="n">FACNUM</span> <span class="o">*</span> <span class="n">PICNUM</span><span class="p">;</span>
+    <span class="c1">//read in the faces</span>
+    <span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">"Reading in the faces and preprocessing..."</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+    <span class="n">string</span> <span class="n">path</span> <span class="o">=</span> <span class="s">"att-face/"</span><span class="p">;</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">FACNUM</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>   <span class="c1">//40 faces</span>
+        <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="n">PICNUM</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>   <span class="c1">//10 pics for each face</span>
+            <span class="n">string</span> <span class="n">facenum</span> <span class="o">=</span> <span class="s">""</span><span class="p">;</span>
+            <span class="kt">int</span> <span class="n">temp</span><span class="p">;</span>
+            <span class="n">temp</span> <span class="o">=</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+            <span class="k">while</span><span class="p">(</span><span class="n">temp</span><span class="o">!=</span><span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+                <span class="kt">char</span> <span class="n">newnum</span> <span class="o">=</span> <span class="sc">'0'</span> <span class="o">+</span> <span class="n">temp</span> <span class="o">%</span> <span class="mi">10</span><span class="p">;</span>
+                <span class="n">facenum</span> <span class="o">=</span> <span class="n">newnum</span> <span class="o">+</span> <span class="n">facenum</span><span class="p">;</span>
+                <span class="n">temp</span> <span class="o">=</span> <span class="n">temp</span> <span class="o">/</span> <span class="mi">10</span><span class="p">;</span>
+            <span class="p">}</span>
+            <span class="n">string</span> <span class="n">picnum</span><span class="p">;</span>
+            <span class="k">if</span><span class="p">(</span><span class="n">j</span> <span class="o">==</span> <span class="mi">9</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">picnum</span> <span class="o">=</span> <span class="s">"10"</span><span class="p">;</span>
+            <span class="p">}</span>
+            <span class="k">else</span> <span class="p">{</span>
+                <span class="n">picnum</span> <span class="o">=</span> <span class="sc">'1'</span> <span class="o">+</span> <span class="n">j</span><span class="p">;</span>
+            <span class="p">}</span>
+            <span class="c1">//cout&lt;&lt;path + "s" + facenum + "/" + picnum + ".pgm"&lt;&lt;endl;</span>
+            <span class="n">faces</span><span class="p">[</span><span class="n">i</span><span class="o">*</span><span class="n">PICNUM</span> <span class="o">+</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">imread</span><span class="p">(</span><span class="n">path</span> <span class="o">+</span> <span class="s">"s"</span> <span class="o">+</span> <span class="n">facenum</span> <span class="o">+</span> <span class="s">"/"</span> <span class="o">+</span> <span class="n">picnum</span> <span class="o">+</span> <span class="s">".pgm"</span><span class="p">);</span>
+            <span class="c1">// imshow("1", faces[i]);</span>
+            <span class="c1">// waitKey(50);</span>
+            <span class="c1">// cout&lt;&lt;i&lt;&lt;", "&lt;&lt;(int)j&lt;&lt;endl;</span>
+
+            <span class="c1">//align the eyes</span>
+            <span class="n">string</span> <span class="n">fpath</span> <span class="o">=</span> <span class="s">"ATT-eye-location/"</span><span class="p">;</span>
+            <span class="n">FileStorage</span> <span class="n">fs</span><span class="p">(</span><span class="n">fpath</span> <span class="o">+</span> <span class="s">"s"</span> <span class="o">+</span> <span class="n">facenum</span> <span class="o">+</span> <span class="s">"/"</span> <span class="o">+</span> <span class="n">picnum</span> <span class="o">+</span> <span class="s">".json"</span><span class="p">,</span> <span class="n">FileStorage</span><span class="o">::</span><span class="n">READ</span><span class="p">);</span>
+            <span class="k">if</span><span class="p">(</span><span class="n">i</span> <span class="o">==</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span> <span class="n">j</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">fs</span><span class="p">[</span><span class="s">"centre_of_left_eye"</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">eye1</span><span class="p">;</span>
+                <span class="n">fs</span><span class="p">[</span><span class="s">"centre_of_right_eye"</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">eye2</span><span class="p">;</span>
+            <span class="p">}</span>
+            <span class="k">else</span> <span class="p">{</span>
+                <span class="n">Point</span> <span class="n">temp1</span><span class="p">,</span> <span class="n">temp2</span><span class="p">;</span>
+                <span class="n">fs</span><span class="p">[</span><span class="s">"centre_of_left_eye"</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">temp1</span><span class="p">;</span>
+                <span class="n">fs</span><span class="p">[</span><span class="s">"centre_of_right_eye"</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">temp2</span><span class="p">;</span>
+                <span class="n">Point2f</span> <span class="n">src</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{(</span><span class="n">temp1</span> <span class="o">+</span> <span class="n">temp2</span><span class="p">)</span><span class="o">/</span><span class="mi">2</span> <span class="o">-</span> <span class="n">Point</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">20</span><span class="p">),</span> <span class="n">temp1</span><span class="p">,</span> <span class="n">temp2</span><span class="p">};</span>
+                <span class="n">Point2f</span> <span class="n">dst</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{(</span><span class="n">eye1</span> <span class="o">+</span> <span class="n">eye2</span><span class="p">)</span><span class="o">/</span><span class="mi">2</span> <span class="o">-</span> <span class="n">Point</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">20</span><span class="p">),</span> <span class="n">eye1</span><span class="p">,</span> <span class="n">eye2</span><span class="p">};</span>
+                <span class="n">Mat</span> <span class="n">affineMat</span> <span class="o">=</span> <span class="n">getAffineTransform</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="n">dst</span><span class="p">);</span>
+                <span class="n">warpAffine</span><span class="p">(</span><span class="n">faces</span><span class="p">[</span><span class="n">i</span><span class="o">*</span><span class="n">PICNUM</span> <span class="o">+</span> <span class="n">j</span><span class="p">],</span> <span class="n">faces</span><span class="p">[</span><span class="n">i</span><span class="o">*</span><span class="n">PICNUM</span> <span class="o">+</span> <span class="n">j</span><span class="p">],</span> <span class="n">affineMat</span><span class="p">,</span> <span class="n">Size</span><span class="p">(</span><span class="n">faces</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">cols</span><span class="p">,</span> <span class="n">faces</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">rows</span><span class="p">),</span> <span class="mi">1</span><span class="p">,</span> <span class="n">BORDER_REFLECT</span><span class="p">);</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="c1">// cout&lt;&lt;faces[1].channels()&lt;&lt;endl;    //3 channels</span>
+    <span class="c1">// cout&lt;&lt;faces[1].type()&lt;&lt;endl;    //type is 16</span>
+    <span class="n">rows</span> <span class="o">=</span> <span class="n">faces</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">rows</span><span class="p">;</span>
+    <span class="n">cols</span> <span class="o">=</span> <span class="n">faces</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">cols</span><span class="p">;</span>
+    <span class="c1">// cout&lt;&lt;rows&lt;&lt;endl;   //112</span>
+    <span class="c1">// cout&lt;&lt;cols&lt;&lt;endl;   //92</span>
+</code></pre></div></div>
+
+<p>接下来建立 <code class="language-plaintext highlighter-rouge">training_set</code> ，<code class="language-plaintext highlighter-rouge">test_set</code> 与 <code class="language-plaintext highlighter-rouge">reconstruct_set</code></p>
+
+<p>这这三个集合均使用 C++ STL 容器 vector 来实现，以方便维护。选出每个人脸的前 5 张图像作为训练集，后 5 张图像作为测试集（包括自己的人脸图像）。使用自己的人脸图像作为重构集。由于读入的人脸图像为分辨率为 $1440\times960$ 的图像，且除人脸外图像中还存在其他的非必要元素，因此为了与给出的 AT&amp;T 数据集中的人脸图像一致，先用 <code class="language-plaintext highlighter-rouge">colRange()</code> 与 <code class="language-plaintext highlighter-rouge">rowRange()</code> 将图像裁切至基本只包含人脸且长宽比与 AT&amp;T 数据集中的图像长宽比相同，为 $96:112$ ，然后使用 <code class="language-plaintext highlighter-rouge">resize()</code> 将图像分辨率变为 $96\times112$ ，与 AT&amp;T 数据集中图像分辨率一致。注意此处使用 <code class="language-plaintext highlighter-rouge">resize()</code> 缩放图像时，若使用默认参数给出的插值算法得到的图像锯齿将极为严重，这里手动选择 <code class="language-plaintext highlighter-rouge">INTER_AREA</code> 算法进行插值。这里由于没有实现检测眼睛中心位置的功能，因此为了检测自己人脸图像的眼睛位置，将处理后的图像输出为 <code class="language-plaintext highlighter-rouge">jpg</code> 格式图像，并在 windows 系统的”画图“中打开，找到每张图眼睛的中心位置并记录在 <code class="language-plaintext highlighter-rouge">pos.json</code> 文件中。完成后重新运行程序，即可从 <code class="language-plaintext highlighter-rouge">pos.json</code> 中读取眼睛位置数据，使用与上述相同的方法进行对齐，基准仍为 AT&amp;T 数据集第一张图像中眼睛的位置。然后将自己人脸的图像前 5 张加入训练集中，后 5 张加入测试集中，10 张自己的人脸图像作为重构集。</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="c1">//construct training set</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">40</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span><span class="c1">// use the first 25 faces, each face has its first 5 pics</span>
+        <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="mi">5</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span>
+        <span class="n">training_set</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">faces</span><span class="p">[</span><span class="n">i</span> <span class="o">*</span> <span class="n">PICNUM</span> <span class="o">+</span> <span class="n">j</span><span class="p">].</span><span class="n">clone</span><span class="p">());</span>
+    <span class="p">}</span>
+
+    <span class="c1">//construct test set</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">40</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span><span class="c1">// use the first 25 faces, each face has its last 5 pics</span>
+        <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">5</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span>
+        <span class="n">test_set</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">faces</span><span class="p">[</span><span class="n">i</span> <span class="o">*</span> <span class="n">PICNUM</span> <span class="o">+</span> <span class="n">j</span><span class="p">].</span><span class="n">clone</span><span class="p">());</span>
+    <span class="p">}</span>
+
+    <span class="c1">//construct reconstruct set</span>
+    <span class="n">FileStorage</span> <span class="n">fs</span><span class="p">(</span><span class="s">"pos.json"</span><span class="p">,</span> <span class="n">FileStorage</span><span class="o">::</span><span class="n">READ</span><span class="p">);</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">string</span> <span class="n">path</span> <span class="o">=</span> <span class="s">""</span><span class="p">;</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">path</span> <span class="o">+</span> <span class="p">(</span><span class="kt">char</span><span class="p">)(</span><span class="sc">'0'</span> <span class="o">+</span> <span class="n">j</span><span class="p">)</span> <span class="o">+</span> <span class="s">".jpg"</span><span class="p">;</span>
+        <span class="n">Mat</span> <span class="n">myface</span> <span class="o">=</span> <span class="n">imread</span><span class="p">(</span><span class="n">path</span><span class="p">);</span>  <span class="c1">// each image is cols == 1440, rows == 960</span>
+        <span class="n">myface</span> <span class="o">=</span> <span class="n">myface</span><span class="p">.</span><span class="n">colRange</span><span class="p">(</span><span class="mi">398</span><span class="p">,</span> <span class="mi">1042</span><span class="p">);</span>
+        <span class="n">myface</span> <span class="o">=</span> <span class="n">myface</span><span class="p">.</span><span class="n">rowRange</span><span class="p">(</span><span class="mi">88</span><span class="p">,</span> <span class="mi">872</span><span class="p">);</span>
+        <span class="n">resize</span><span class="p">(</span><span class="n">myface</span><span class="p">,</span> <span class="n">myface</span><span class="p">,</span> <span class="n">Size</span><span class="p">(</span><span class="mi">92</span><span class="p">,</span> <span class="mi">112</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">INTER_AREA</span><span class="p">);</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="s">""</span><span class="p">;</span>
+        <span class="n">imwrite</span><span class="p">(</span><span class="n">path</span> <span class="o">+</span> <span class="p">(</span><span class="kt">char</span><span class="p">)(</span><span class="sc">'0'</span> <span class="o">+</span> <span class="n">j</span><span class="p">)</span> <span class="o">+</span> <span class="s">"d.jpg"</span><span class="p">,</span> <span class="n">myface</span><span class="p">);</span>
+        <span class="c1">//align the eyes</span>
+        <span class="n">Point</span> <span class="n">temp1</span><span class="p">,</span> <span class="n">temp2</span><span class="p">;</span>
+        <span class="n">string</span> <span class="n">label_l</span> <span class="o">=</span> <span class="s">""</span><span class="p">,</span> <span class="n">label_r</span> <span class="o">=</span> <span class="s">""</span><span class="p">;</span>
+        <span class="n">label_l</span> <span class="o">=</span> <span class="n">label_l</span> <span class="o">+</span> <span class="p">(</span><span class="kt">char</span><span class="p">)(</span><span class="sc">'0'</span> <span class="o">+</span> <span class="n">j</span><span class="p">)</span> <span class="o">+</span> <span class="s">"l"</span><span class="p">;</span>
+        <span class="n">label_r</span> <span class="o">=</span> <span class="n">label_r</span> <span class="o">+</span> <span class="p">(</span><span class="kt">char</span><span class="p">)(</span><span class="sc">'0'</span> <span class="o">+</span> <span class="n">j</span><span class="p">)</span> <span class="o">+</span> <span class="s">"r"</span><span class="p">;</span>
+        <span class="n">fs</span><span class="p">[</span><span class="n">label_l</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">temp1</span><span class="p">;</span>
+        <span class="n">fs</span><span class="p">[</span><span class="n">label_r</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">temp2</span><span class="p">;</span>
+        <span class="n">Point2f</span> <span class="n">src</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{(</span><span class="n">temp1</span> <span class="o">+</span> <span class="n">temp2</span><span class="p">)</span><span class="o">/</span><span class="mi">2</span> <span class="o">-</span> <span class="n">Point</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">20</span><span class="p">),</span> <span class="n">temp1</span><span class="p">,</span> <span class="n">temp2</span><span class="p">};</span>
+        <span class="n">Point2f</span> <span class="n">dst</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{(</span><span class="n">eye1</span> <span class="o">+</span> <span class="n">eye2</span><span class="p">)</span><span class="o">/</span><span class="mi">2</span> <span class="o">-</span> <span class="n">Point</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">20</span><span class="p">),</span> <span class="n">eye1</span><span class="p">,</span> <span class="n">eye2</span><span class="p">};</span>
+        <span class="n">Mat</span> <span class="n">affineMat</span> <span class="o">=</span> <span class="n">getAffineTransform</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="n">dst</span><span class="p">);</span>
+        <span class="n">warpAffine</span><span class="p">(</span><span class="n">myface</span><span class="p">,</span> <span class="n">myface</span><span class="p">,</span> <span class="n">affineMat</span><span class="p">,</span> <span class="n">Size</span><span class="p">(</span><span class="n">faces</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">cols</span><span class="p">,</span> <span class="n">faces</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">rows</span><span class="p">),</span> <span class="mi">1</span><span class="p">,</span> <span class="n">BORDER_REFLECT</span><span class="p">);</span>
+        <span class="n">reconstruct_set</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">myface</span><span class="p">);</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">j</span> <span class="o">&lt;</span> <span class="mi">5</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">training_set</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">myface</span><span class="p">);</span>
+        <span class="p">}</span>
+        <span class="k">else</span> <span class="p">{</span>
+            <span class="n">test_set</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">myface</span><span class="p">);</span>
+        <span class="p">}</span>
+        <span class="c1">// imshow("myface", myface);</span>
+        <span class="c1">// waitKey(0);</span>
+    <span class="p">}</span>
+</code></pre></div></div>
+
+<h4 id="训练">训练</h4>
+
+<p>训练模型时先进行预处理，先将训练集中所有图像转换为灰度图，然后进行直方图均衡化。</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="c1">//Training</span>
+    <span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">"Start training"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+    <span class="n">FileStorage</span> <span class="nf">model</span><span class="p">(</span><span class="s">"model.json"</span><span class="p">,</span> <span class="n">FileStorage</span><span class="o">::</span><span class="n">WRITE</span><span class="p">);</span>
+    <span class="c1">//histogram equalization</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">training_set</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span> <span class="c1">// the first 200 pics are used as training set</span>
+        <span class="n">cvtColor</span><span class="p">(</span><span class="n">training_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">training_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">COLOR_RGB2GRAY</span><span class="p">);</span>
+        <span class="n">equalizeHist</span><span class="p">(</span><span class="n">training_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">training_set</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+        <span class="c1">// imshow("afterhist", faces[i]);</span>
+        <span class="c1">// waitKey(100);</span>
+    <span class="p">}</span>
+</code></pre></div></div>
+
+<p>然后将训练集中的每张图像转化为一个行向量，合并为一个大矩阵 <code class="language-plaintext highlighter-rouge">samples</code></p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="c1">//combine all the training set into a big matrix, each row is a image</span>
+    <span class="n">Mat</span> <span class="n">samples</span> <span class="o">=</span> <span class="n">training_set</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">reshape</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">);</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">training_set</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">vconcat</span><span class="p">(</span><span class="n">samples</span><span class="p">,</span> <span class="n">training_set</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">reshape</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">samples</span><span class="p">);</span>
+    <span class="p">}</span>
+</code></pre></div></div>
+
+<p>接下来调用 <code class="language-plaintext highlighter-rouge">calcCovarMatrix()</code> 函数计算出矩阵 <code class="language-plaintext highlighter-rouge">samples</code> 的均值与协方差矩阵。这里我一开始使用的方法是求出协方差矩阵的特征向量作为特征人脸，但是这样做程序的运算量很大，需要运行较久才能获得结果。而现在改为使用 SVD 来求取特征人脸，协方差矩阵已经用不到了，但是 <code class="language-plaintext highlighter-rouge">calcCovarMatrix()</code> 函数求得的均值仍有用，因此此处没有做改动，此处改为调用求取全部行向量均值的函数也可行，同时也可以进一步提升性能。并将平均人脸向量 <code class="language-plaintext highlighter-rouge">mean</code> 写入训练结果文件 <code class="language-plaintext highlighter-rouge">model.json</code> 中。然后将样本中心化，这里使用的方法为，把 <code class="language-plaintext highlighter-rouge">mean</code> 纵向拼接成一个和 <code class="language-plaintext highlighter-rouge">f_samples</code> 一样大的矩阵 <code class="language-plaintext highlighter-rouge">meanMat</code> ，每一行都是原先的 <code class="language-plaintext highlighter-rouge">mean</code> 矩阵，这样直接将 <code class="language-plaintext highlighter-rouge">f_samples</code> 与 <code class="language-plaintext highlighter-rouge">meanMat</code> 做矩阵减法，即完成了中心化。</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="c1">//calculate the mean vector and then centralize</span>
+    <span class="n">Mat</span> <span class="n">mean</span><span class="p">,</span> <span class="n">cov</span><span class="p">;</span>
+    <span class="n">calcCovarMatrix</span><span class="p">(</span><span class="n">samples</span><span class="p">,</span> <span class="n">cov</span><span class="p">,</span> <span class="n">mean</span><span class="p">,</span> <span class="n">COVAR_NORMAL</span> <span class="o">|</span> <span class="n">COVAR_ROWS</span><span class="p">,</span> <span class="n">CV_64FC1</span><span class="p">);</span>
+    <span class="n">model</span><span class="o">&lt;&lt;</span><span class="s">"mean"</span><span class="o">&lt;&lt;</span><span class="n">mean</span><span class="p">;</span>
+    <span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">"the mean image is generated"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">meanMat</span> <span class="o">=</span> <span class="n">mean</span><span class="p">.</span><span class="n">clone</span><span class="p">();</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">205</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">vconcat</span><span class="p">(</span><span class="n">meanMat</span><span class="p">,</span> <span class="n">mean</span><span class="p">,</span> <span class="n">meanMat</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="n">Mat</span> <span class="n">f_samples</span><span class="p">;</span>
+    <span class="n">samples</span><span class="p">.</span><span class="n">convertTo</span><span class="p">(</span><span class="n">f_samples</span><span class="p">,</span> <span class="n">CV_64FC1</span><span class="p">);</span>
+    <span class="n">Mat</span> <span class="n">centralized</span><span class="p">;</span>
+    <span class="n">centralized</span> <span class="o">=</span> <span class="n">f_samples</span> <span class="o">-</span> <span class="n">meanMat</span><span class="p">;</span>
+    <span class="c1">// cout&lt;&lt;"centralized size: "&lt;&lt;centralized.rows&lt;&lt;", "&lt;&lt;centralized.cols&lt;&lt;endl;</span>
+</code></pre></div></div>
+
+<p>接下来这部分是输出生成的平均脸，不再赘述</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="c1">//reshape the mean vector to make it a image again</span>
+    <span class="n">Mat</span> <span class="n">meanimg</span><span class="p">;</span>
+    <span class="n">mean</span><span class="p">.</span><span class="n">convertTo</span><span class="p">(</span><span class="n">meanimg</span><span class="p">,</span> <span class="n">CV_8UC1</span><span class="p">);</span>
+    <span class="n">meanimg</span> <span class="o">=</span> <span class="n">meanimg</span><span class="p">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">rows</span><span class="p">);</span>
+    <span class="n">imshow</span><span class="p">(</span><span class="s">"mean"</span><span class="p">,</span> <span class="n">meanimg</span><span class="p">);</span>
+    <span class="n">waitKey</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>接下来则是通过 SVD 计算特征脸，取 SVD 得到的右奇异矩阵的前 <code class="language-plaintext highlighter-rouge">p</code> 行作为特征脸矩阵 <code class="language-plaintext highlighter-rouge">pc</code> ，此处变量名为 <code class="language-plaintext highlighter-rouge">a</code> ，这里取前 <code class="language-plaintext highlighter-rouge">p</code> 行是由于 <code class="language-plaintext highlighter-rouge">SVD::compute()</code> 得到的奇异值矩阵中的奇异值是从上到下由大到小排列的，将其写入训练结果文件 <code class="language-plaintext highlighter-rouge">model.json</code> 中，并计算 <code class="language-plaintext highlighter-rouge">pc</code> 的转置 <code class="language-plaintext highlighter-rouge">pct</code></p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="c1">//calculate the eigenvalues and eigenvectors</span>
+    <span class="n">Mat</span> <span class="n">eigenvals</span><span class="p">,</span> <span class="n">eigenvecs</span><span class="p">;</span>   <span class="c1">//eigenvecs: 10304 rows and 10304 cols</span>
+    <span class="n">Mat</span> <span class="n">left</span><span class="p">;</span>
+    <span class="n">SVD</span><span class="o">::</span><span class="n">compute</span><span class="p">(</span><span class="n">centralized</span><span class="p">,</span> <span class="n">eigenvals</span><span class="p">,</span> <span class="n">left</span><span class="p">,</span> <span class="n">eigenvecs</span><span class="p">,</span> <span class="n">SVD</span><span class="o">::</span><span class="n">FULL_UV</span><span class="p">);</span>
+    <span class="c1">// cout&lt;&lt;"eigenval size: "&lt;&lt;eigenvals.rows&lt;&lt;", "&lt;&lt;eigenvals.cols&lt;&lt;endl;</span>
+    <span class="c1">// cout&lt;&lt;"left size: "&lt;&lt;left.rows&lt;&lt;", "&lt;&lt;left.cols&lt;&lt;endl;</span>
+    <span class="c1">// cout&lt;&lt;"eigenvec size: "&lt;&lt;eigenvecs.rows&lt;&lt;", "&lt;&lt;eigenvecs.cols&lt;&lt;endl;</span>
+    <span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">"eigenfaces generated"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+    
+    <span class="kt">int</span> <span class="n">p</span><span class="p">;</span>
+    <span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">"please input the number of PCs you wanted"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+    <span class="n">cin</span><span class="o">&gt;&gt;</span><span class="n">p</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">a</span> <span class="o">=</span> <span class="n">eigenvecs</span><span class="p">.</span><span class="n">rowRange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">p</span><span class="p">).</span><span class="n">clone</span><span class="p">();</span>
+    <span class="n">model</span><span class="o">&lt;&lt;</span><span class="s">"pc"</span><span class="o">&lt;&lt;</span><span class="n">a</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">at</span><span class="p">;</span>
+    <span class="n">transpose</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">at</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>接下来为将前 10 张特征脸拼接显示出来。由于特征脸矩阵中取值的问题，直接转换为 <code class="language-plaintext highlighter-rouge">CV_8UC1</code> 格式输出的话会是一片黑色，因此这里先使用 <code class="language-plaintext highlighter-rouge">MINMAX</code> 算法将其范围调整至 <code class="language-plaintext highlighter-rouge">[0, 255]</code> ，再进行显示</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="n">Mat</span> <span class="n">show</span><span class="p">;</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">Mat</span> <span class="n">temp</span> <span class="o">=</span> <span class="n">eigenvecs</span><span class="p">.</span><span class="n">rowRange</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">).</span><span class="n">clone</span><span class="p">();</span>
+        <span class="n">normalize</span><span class="p">(</span><span class="n">temp</span><span class="p">,</span> <span class="n">temp</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="n">NORM_MINMAX</span><span class="p">);</span>
+        <span class="n">temp</span><span class="p">.</span><span class="n">convertTo</span><span class="p">(</span><span class="n">temp</span><span class="p">,</span> <span class="n">CV_8UC1</span><span class="p">);</span>
+        <span class="n">temp</span> <span class="o">=</span> <span class="n">temp</span><span class="p">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">rows</span><span class="p">);</span>
+        <span class="n">resize</span><span class="p">(</span><span class="n">temp</span><span class="p">,</span> <span class="n">temp</span><span class="p">,</span> <span class="n">Size</span><span class="p">(</span><span class="mi">184</span><span class="p">,</span> <span class="mi">224</span><span class="p">));</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">i</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">show</span> <span class="o">=</span> <span class="n">temp</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="k">else</span> <span class="p">{</span>
+            <span class="n">hconcat</span><span class="p">(</span><span class="n">show</span><span class="p">,</span> <span class="n">temp</span><span class="p">,</span> <span class="n">show</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="n">imshow</span><span class="p">(</span><span class="s">"first 10 eigenfaces"</span><span class="p">,</span> <span class="n">show</span><span class="p">);</span>
+    <span class="n">waitKey</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>最后则是将训练集映射到特征脸空间中，使用中心化后的训练集乘以特征脸矩阵的转置即可得到结果矩阵 <code class="language-plaintext highlighter-rouge">train_project</code> ，其中每一个行向量则对应一张图像降维后的结果，将映射后得到的结果也写入训练结果文件 <code class="language-plaintext highlighter-rouge">model.json</code> 中。至此则完成了模型的训练。</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">"generating training set projection"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">train_project</span> <span class="o">=</span> <span class="n">centralized</span> <span class="o">*</span> <span class="n">at</span><span class="p">;</span>   <span class="c1">// each info is a row vec</span>
+    <span class="n">model</span><span class="o">&lt;&lt;</span><span class="s">"train_project"</span><span class="o">&lt;&lt;</span><span class="n">train_project</span><span class="p">;</span>
+    <span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">"done"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+</code></pre></div></div>
+
+<h4 id="识别测试部分">识别测试部分</h4>
+
+<p>此部分中，先将测试集转换为灰度图后进行直方图均衡化，然后从 <code class="language-plaintext highlighter-rouge">model.json</code> 中读取训练好的模型，包括平均人脸 <code class="language-plaintext highlighter-rouge">mean</code> ，训练集映射到特征脸空间的结果 <code class="language-plaintext highlighter-rouge">train_project</code> ，和特征人脸矩阵 <code class="language-plaintext highlighter-rouge">pc</code> 。其中 <code class="language-plaintext highlighter-rouge">mean</code> 是一个行向量，数据数与图片的像素数相同，<code class="language-plaintext highlighter-rouge">train_project</code> 是一个矩阵，有与 <code class="language-plaintext highlighter-rouge">training_set</code> 中图像数量相同的行数，和与选取的 <code class="language-plaintext highlighter-rouge">pc</code> 数量相同的列数，每一行代表一个 <code class="language-plaintext highlighter-rouge">training_set</code> 中图像投影到特征脸空间后的降维结果。然后调用 <code class="language-plaintext highlighter-rouge">transpose</code> 函数求出 <code class="language-plaintext highlighter-rouge">pc</code> 的转置 <code class="language-plaintext highlighter-rouge">pct</code> 。这样所需的训练结果数据就已经准备好了</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="nf">mytest</span><span class="p">(</span><span class="n">string</span> <span class="n">model</span><span class="p">,</span> <span class="n">vector</span><span class="o">&lt;</span><span class="n">Mat</span><span class="o">&gt;</span> <span class="n">test_set</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">fstream</span> <span class="n">ftxt</span><span class="p">(</span><span class="s">"testing_result.txt"</span><span class="p">,</span> <span class="n">ios</span><span class="o">::</span><span class="n">out</span><span class="p">);</span>
+    <span class="n">ftxt</span><span class="p">.</span><span class="n">clear</span><span class="p">();</span>
+    <span class="c1">//histogram equalization</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">test_set</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">cvtColor</span><span class="p">(</span><span class="n">test_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">test_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">COLOR_RGB2GRAY</span><span class="p">);</span>
+        <span class="n">equalizeHist</span><span class="p">(</span><span class="n">test_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">test_set</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+    <span class="p">}</span>
+    <span class="n">FileStorage</span> <span class="n">fs</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">FileStorage</span><span class="o">::</span><span class="n">READ</span><span class="p">);</span>
+    <span class="n">Mat</span> <span class="n">mean</span><span class="p">;</span>
+    <span class="n">fs</span><span class="p">[</span><span class="s">"mean"</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">mean</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">train_project</span><span class="p">;</span>
+    <span class="n">fs</span><span class="p">[</span><span class="s">"train_project"</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">train_project</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">pc</span><span class="p">,</span> <span class="n">pct</span><span class="p">;</span>
+    <span class="n">fs</span><span class="p">[</span><span class="s">"pc"</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">pc</span><span class="p">;</span>
+    <span class="n">transpose</span><span class="p">(</span><span class="n">pc</span><span class="p">,</span> <span class="n">pct</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>然后将测试集的图像每个转化为一个行向量，全部存入矩阵 <code class="language-plaintext highlighter-rouge">test_sample</code> 中，然后将每一行都减去 <code class="language-plaintext highlighter-rouge">mean</code> ，这里的实现方法是把 <code class="language-plaintext highlighter-rouge">mean</code> 纵向拼接成一个和 <code class="language-plaintext highlighter-rouge">test_sample</code> 一样大的矩阵 <code class="language-plaintext highlighter-rouge">test_mean</code> ，每一行都是原先的 <code class="language-plaintext highlighter-rouge">mean</code> 矩阵，这样直接将 <code class="language-plaintext highlighter-rouge">test_sample</code> 与 <code class="language-plaintext highlighter-rouge">test_mean</code> 做矩阵减法，即完成了中心化，存入 <code class="language-plaintext highlighter-rouge">test_centr</code> 中。然后则使用 <code class="language-plaintext highlighter-rouge">test_centr</code> 乘 <code class="language-plaintext highlighter-rouge">pct</code>（矩阵乘法），即可得到 <code class="language-plaintext highlighter-rouge">test_set</code> 中人脸投影到特征脸空间后的结果 <code class="language-plaintext highlighter-rouge">test_project</code> 。同样地，<code class="language-plaintext highlighter-rouge">test_project</code> 中每一行即为 <code class="language-plaintext highlighter-rouge">test_set</code> 中一个人脸投影到特征脸空间后的结果。</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="n">Mat</span> <span class="n">test_sample</span> <span class="o">=</span> <span class="n">test_set</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">reshape</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">);</span>
+    <span class="n">Mat</span> <span class="n">test_mean</span> <span class="o">=</span> <span class="n">mean</span><span class="p">.</span><span class="n">clone</span><span class="p">();</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">test_set</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">vconcat</span><span class="p">(</span><span class="n">test_sample</span><span class="p">,</span> <span class="n">test_set</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">reshape</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">test_sample</span><span class="p">);</span>
+        <span class="n">vconcat</span><span class="p">(</span><span class="n">test_mean</span><span class="p">,</span> <span class="n">mean</span><span class="p">,</span> <span class="n">test_mean</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="n">test_sample</span><span class="p">.</span><span class="n">convertTo</span><span class="p">(</span><span class="n">test_sample</span><span class="p">,</span> <span class="n">CV_64FC1</span><span class="p">);</span>
+    <span class="c1">// cout&lt;&lt;"test sample size: "&lt;&lt;test_sample.rows&lt;&lt;", "&lt;&lt;test_sample.cols&lt;&lt;endl;</span>
+    <span class="n">Mat</span> <span class="n">test_centr</span> <span class="o">=</span> <span class="n">test_sample</span> <span class="o">-</span> <span class="n">test_mean</span><span class="p">;</span>
+    <span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">"generating testing set projection"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">test_project</span> <span class="o">=</span> <span class="n">test_centr</span> <span class="o">*</span> <span class="n">pct</span><span class="p">;</span>
+    <span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">"done"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>接下来则与训练集结果进行比较。对于 <code class="language-plaintext highlighter-rouge">test_project</code> 的每一行，计算其与 <code class="language-plaintext highlighter-rouge">train_project</code> 每行的欧氏距离，并记录 <code class="language-plaintext highlighter-rouge">train_project</code> 中欧式距离最小的行编号，将结果写入 <code class="language-plaintext highlighter-rouge">testing_result.txt</code> 中。通过 <code class="language-plaintext highlighter-rouge">i/5 + 1</code> 可以得到 <code class="language-plaintext highlighter-rouge">test_face</code> 对应的脸的编号，<code class="language-plaintext highlighter-rouge">i%5 + 6</code> 可以得到这是对应脸的第几张图片，而 <code class="language-plaintext highlighter-rouge">min_ind/5 + 1</code> 可以得到最相似的 <code class="language-plaintext highlighter-rouge">training_face</code> 中对应的脸的编号，<code class="language-plaintext highlighter-rouge">min_ind%5 + 1</code> 可以得到这是对应脸的第几张图片，将这些信息输出到 <code class="language-plaintext highlighter-rouge">testing_result.txt</code> 中。判断一次测试结果是否正确的方法即为判断 test face 与 result face 是否为同一张脸，若是，则表明结果正确，将 <code class="language-plaintext highlighter-rouge">correct_cnt</code> 自增 <code class="language-plaintext highlighter-rouge">1</code> ，反之则结果错误，不进行操作，将每次测试的正确与否也输入至 <code class="language-plaintext highlighter-rouge">testing_result.txt</code> 中。最后在循环结束后，<code class="language-plaintext highlighter-rouge">correct_cnt</code> 中的值即为测试结果正确数量，用 <code class="language-plaintext highlighter-rouge">correct_cnt/test_set.size()</code> 即可得到本次测试的正确率。将正确率也写入 <code class="language-plaintext highlighter-rouge">testing_result.txt</code> 中。</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="c1">// comparison</span>
+    <span class="kt">int</span> <span class="n">correct_cnt</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">test_set</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// compute distance</span>
+        <span class="kt">int</span> <span class="n">min_ind</span><span class="p">;</span>
+        <span class="kt">double</span> <span class="n">min_dist</span><span class="p">;</span>
+        <span class="n">Mat</span> <span class="n">vec_test</span> <span class="o">=</span> <span class="n">test_project</span><span class="p">.</span><span class="n">rowRange</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">).</span><span class="n">clone</span><span class="p">();</span>
+        <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">index</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">index</span> <span class="o">&lt;</span> <span class="n">train_project</span><span class="p">.</span><span class="n">rows</span><span class="p">;</span> <span class="n">index</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">Mat</span> <span class="n">vec_train</span> <span class="o">=</span> <span class="n">train_project</span><span class="p">.</span><span class="n">rowRange</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">index</span><span class="o">+</span><span class="mi">1</span><span class="p">).</span><span class="n">clone</span><span class="p">();</span>
+            <span class="n">Mat</span> <span class="n">distance</span> <span class="o">=</span> <span class="n">vec_test</span> <span class="o">-</span> <span class="n">vec_train</span><span class="p">;</span>
+            <span class="n">pow</span><span class="p">(</span><span class="n">distance</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">distance</span><span class="p">);</span>
+            <span class="kt">double</span> <span class="n">sum</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+            <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="n">distance</span><span class="p">.</span><span class="n">cols</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">sum</span> <span class="o">+=</span> <span class="n">distance</span><span class="p">.</span><span class="n">at</span><span class="o">&lt;</span><span class="n">float64_t</span><span class="o">&gt;</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">j</span><span class="p">);</span>
+            <span class="p">}</span>
+            <span class="k">if</span><span class="p">(</span><span class="n">index</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">min_dist</span> <span class="o">=</span> <span class="n">sum</span><span class="p">;</span>
+                <span class="n">min_ind</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+            <span class="p">}</span>
+            <span class="k">else</span> <span class="p">{</span>
+                <span class="k">if</span><span class="p">(</span><span class="n">sum</span> <span class="o">&lt;</span> <span class="n">min_dist</span><span class="p">)</span> <span class="p">{</span>
+                    <span class="n">min_dist</span> <span class="o">=</span> <span class="n">sum</span><span class="p">;</span>
+                    <span class="n">min_ind</span> <span class="o">=</span> <span class="n">index</span><span class="p">;</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="n">ftxt</span><span class="o">&lt;&lt;</span><span class="s">"test face: s"</span><span class="o">&lt;&lt;</span><span class="n">i</span><span class="o">/</span><span class="mi">5</span> <span class="o">+</span> <span class="mi">1</span><span class="o">&lt;&lt;</span><span class="s">"p"</span><span class="o">&lt;&lt;</span><span class="n">i</span><span class="o">%</span><span class="mi">5</span> <span class="o">+</span> <span class="mi">6</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+        <span class="n">ftxt</span><span class="o">&lt;&lt;</span><span class="s">"result face: s"</span><span class="o">&lt;&lt;</span><span class="n">min_ind</span><span class="o">/</span><span class="mi">5</span> <span class="o">+</span> <span class="mi">1</span><span class="o">&lt;&lt;</span><span class="s">"p"</span><span class="o">&lt;&lt;</span><span class="n">min_ind</span><span class="o">%</span><span class="mi">5</span> <span class="o">+</span> <span class="mi">1</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+        <span class="n">ftxt</span><span class="o">&lt;&lt;</span><span class="s">"min distance = "</span><span class="o">&lt;&lt;</span><span class="n">min_dist</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">i</span><span class="o">/</span><span class="mi">5</span> <span class="o">==</span> <span class="n">min_ind</span><span class="o">/</span><span class="mi">5</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">correct_cnt</span><span class="o">++</span><span class="p">;</span>
+            <span class="n">ftxt</span><span class="o">&lt;&lt;</span><span class="s">"passed"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="k">else</span> <span class="p">{</span>
+            <span class="n">ftxt</span><span class="o">&lt;&lt;</span><span class="s">"failed"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="n">ftxt</span><span class="o">&lt;&lt;</span><span class="s">"-------------------------"</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="n">ftxt</span><span class="o">&lt;&lt;</span><span class="s">"acc = "</span><span class="o">&lt;&lt;</span><span class="p">(</span><span class="kt">double</span><span class="p">)</span><span class="n">correct_cnt</span><span class="o">/</span><span class="n">test_set</span><span class="p">.</span><span class="n">size</span><span class="p">()</span><span class="o">&lt;&lt;</span><span class="n">endl</span><span class="p">;</span>
+    <span class="n">ftxt</span><span class="p">.</span><span class="n">close</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h4 id="图像重构部分">图像重构部分</h4>
+
+<p>图像重构时同样也需要之前训练好的模型，因此从 <code class="language-plaintext highlighter-rouge">model.json</code> 中读取特征脸矩阵 <code class="language-plaintext highlighter-rouge">pc</code> 并计算其转置 <code class="language-plaintext highlighter-rouge">pct</code> 。将同样直方图均衡化并中心化后的图像（一个行向量）先乘以 <code class="language-plaintext highlighter-rouge">pct</code> ，得到其降维后的结果，然后乘以 <code class="language-plaintext highlighter-rouge">pc</code> 来重构图像，最后将这些重构出的图像放大两倍拼接起来显示出来。</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="nf">myreconstruction</span><span class="p">(</span><span class="n">string</span> <span class="n">model</span><span class="p">,</span> <span class="n">vector</span><span class="o">&lt;</span><span class="n">Mat</span><span class="o">&gt;</span> <span class="n">reconstruct_set</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">FileStorage</span> <span class="n">fs</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">FileStorage</span><span class="o">::</span><span class="n">READ</span><span class="p">);</span>
+    <span class="n">Mat</span> <span class="n">pc</span><span class="p">;</span>
+    <span class="n">fs</span><span class="p">[</span><span class="s">"pc"</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">pc</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">pct</span><span class="p">;</span>
+    <span class="n">transpose</span><span class="p">(</span><span class="n">pc</span><span class="p">,</span> <span class="n">pct</span><span class="p">);</span>
+    <span class="n">Mat</span> <span class="n">mean</span><span class="p">;</span>
+    <span class="n">fs</span><span class="p">[</span><span class="s">"mean"</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="n">mean</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">result</span><span class="p">;</span>
+    <span class="n">Mat</span> <span class="n">src</span><span class="p">;</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">cvtColor</span><span class="p">(</span><span class="n">reconstruct_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">reconstruct_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">COLOR_RGB2GRAY</span><span class="p">);</span>
+        <span class="n">equalizeHist</span><span class="p">(</span><span class="n">reconstruct_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">reconstruct_set</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+        <span class="n">Mat</span> <span class="n">temp</span> <span class="o">=</span> <span class="n">reconstruct_set</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">reshape</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">);</span>
+        <span class="n">temp</span><span class="p">.</span><span class="n">convertTo</span><span class="p">(</span><span class="n">temp</span><span class="p">,</span> <span class="n">CV_64FC1</span><span class="p">);</span>
+        <span class="n">temp</span> <span class="o">=</span> <span class="n">temp</span> <span class="o">-</span> <span class="n">mean</span><span class="p">;</span>
+        <span class="n">temp</span> <span class="o">=</span> <span class="n">temp</span> <span class="o">*</span> <span class="n">pct</span><span class="p">;</span>
+        <span class="n">temp</span> <span class="o">=</span> <span class="n">temp</span> <span class="o">*</span> <span class="n">pc</span><span class="p">;</span>
+        <span class="n">temp</span> <span class="o">=</span> <span class="n">temp</span> <span class="o">+</span> <span class="n">mean</span><span class="p">;</span>
+        <span class="n">temp</span> <span class="o">=</span> <span class="n">temp</span><span class="p">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">rows</span><span class="p">);</span>
+        <span class="n">resize</span><span class="p">(</span><span class="n">temp</span><span class="p">,</span> <span class="n">temp</span><span class="p">,</span> <span class="n">Size</span><span class="p">(</span><span class="mi">184</span><span class="p">,</span> <span class="mi">224</span><span class="p">));</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">i</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">temp</span><span class="p">;</span>
+            <span class="n">src</span> <span class="o">=</span> <span class="n">reconstruct_set</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+        <span class="p">}</span>
+        <span class="k">else</span> <span class="p">{</span>
+            <span class="n">hconcat</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">temp</span><span class="p">,</span> <span class="n">result</span><span class="p">);</span>
+            <span class="n">hconcat</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="n">reconstruct_set</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">src</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="n">normalize</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">result</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="n">NORM_MINMAX</span><span class="p">);</span>
+    <span class="n">normalize</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="n">src</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="n">NORM_MINMAX</span><span class="p">);</span>
+    <span class="n">result</span><span class="p">.</span><span class="n">convertTo</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">CV_8UC1</span><span class="p">);</span>
+    <span class="n">src</span><span class="p">.</span><span class="n">convertTo</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="n">CV_8UC1</span><span class="p">);</span>
+    <span class="n">imshow</span><span class="p">(</span><span class="s">"reconstruct"</span><span class="p">,</span> <span class="n">result</span><span class="p">);</span>
+    <span class="n">imshow</span><span class="p">(</span><span class="s">"src"</span><span class="p">,</span> <span class="n">src</span><span class="p">);</span>
+    <span class="n">waitKey</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+
+    </div>
+
+</article>
+<div class="post-nav">
+<a class="previous" href="/jekyll-theme-yat/jekyll/2018/12/07/welcome-to-jekyll.html" title="Welcome to Jekyll!">Welcome to Jekyll!</a><span></span>
+</div>
+<div class="post-related">
+      <div>Related Articles</div>
+      <ul>
+        <li><a class="post-link" href="/jekyll-theme-yat/markdown/2022/12/09/cv-eigenface.html" title="">opencv C++ 实现 Eigenface</a></li>
+<li><a class="post-link" href="/jekyll-theme-yat/example/2017/12/18/video-example.html" title="">Video example</a></li>
+<li><a class="post-link" href="/jekyll-theme-yat/junk/2016/08/12/my-example-post.html" title="">My Example Post</a></li>
+<li><a class="post-link" href="/jekyll-theme-yat/jekyll/2018/12/07/welcome-to-jekyll.html" title="">Welcome to Jekyll!</a></li>
+</ul>
+    </div>
+<div class="post-comments"></div></section>
+</div>
+
+
+  </section>
+  <section class="sidebar" style="margin-left: 15px;">
+    <!-- Get sidebar items --><style type="text/css" media="screen">
+.post-menu ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+</style>
+
+<div class="post-menu">
+  <div class="post-menu-title">TOC</div>
+  <div class="post-menu-content"></div>
+</div>
+
+<script>
+  function generateContent() {
+    var menu = document.querySelector(".post-menu");
+    var menuContent =  menu.querySelector(".post-menu-content");
+    var headings = document.querySelector(".post-content").querySelectorAll("h2, h3, h4, h5, h6");
+
+    // Hide menu when no headings
+    if (headings.length === 0) {
+      return menu.style.display = "none";
+    }
+
+    // Generate post menu
+    var menuHTML = '';
+    for (var i = 0; i < headings.length; i++) {
+      var h = headings[i];
+      menuHTML += (
+        '<li class="h-' + h.tagName.toLowerCase() + '">'
+        + '<a href="#h-' + h.getAttribute('id') + '">' + h.textContent + '</a></li>');
+    }
+
+    menuContent.innerHTML = '<ul>' + menuHTML + '</ul>';
+
+    // The header element
+    var header = document.querySelector('header.site-header');
+
+    function doMenuCollapse(index, over_items) {
+      var items = menuContent.firstChild.children;
+
+      if (over_items == undefined) {
+        over_items = 20;
+      }
+
+      if (items.length < over_items) {
+        return;
+      }
+
+      var activeItem = items[index];
+      var beginItem = activeItem
+      var endItem = activeItem
+      var beginIndex = index;
+      var endIndex = index + 1;
+      while (beginIndex >= 0
+        && !items[beginIndex].classList.contains('h-h2')) {
+        beginIndex -= 1;
+      }
+      while (endIndex < items.length
+        && !items[endIndex].classList.contains('h-h2')) {
+        endIndex += 1;
+      }
+      for (var i = 0; i < beginIndex; i++) {
+        item = items[i]
+        if (!item.classList.contains('h-h2')) {
+          item.style.display = 'none';
+        }
+      }
+      for (var i = beginIndex + 1; i < endIndex; i++) {
+        item = items[i]
+        // if (!item.classList.contains('h-h2')) {
+          item.style.display = '';
+        // }
+      }
+      for (var i = endIndex; i < items.length; i++) {
+        item = items[i]
+        if (!item.classList.contains('h-h2')) {
+          item.style.display = 'none';
+        }
+      }
+    }
+
+    // Init menu collapsed
+    doMenuCollapse(-1);
+
+    // Active the menu item
+    window.addEventListener('scroll', function (event) {
+      var lastActive = menuContent.querySelector('.active');
+      var changed = true;
+      var activeIndex = -1;
+      for (var i = headings.length - 1; i >= 0; i--) {
+        var h = headings[i];
+        var headingRect = h.getBoundingClientRect();
+        var headerRect = header.getBoundingClientRect();
+        var headerTop = Math.floor(headerRect.top);
+        var headerHeight = Math.floor(headerRect.height);
+        var headerHeight = headerTop + headerHeight + 20;
+        if (headingRect.top <= headerHeight) {
+          var id = 'h-' + h.getAttribute('id');
+          var a = menuContent.querySelector('a[href="#' + id  + '"]');
+          var curActive = a.parentNode;
+          if (curActive) {
+            curActive.classList.add('active');
+            activeIndex = i;
+          }
+          if (lastActive == curActive) {
+            changed = false;
+          }
+          break;
+        }
+      }
+      if (changed) {
+        if (lastActive) {
+          lastActive.classList.remove('active');
+        }
+        doMenuCollapse(activeIndex);
+      }
+      event.preventDefault();
+    });
+  }
+  generateContent();
+</script>
+</section>
+</div>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/jekyll-theme-yat/"></data>
+
+  <div class="wrapper">
+    <div class="site-footer-inner">
+<div></div>
+      <div>Powered by <a title="Jekyll is a simple, blog-aware, static site
+      generator." href="https://jekyllrb.com/">Jekyll</a> &amp; <a title="Yat, yet
+      another theme." href="https://github.com/jeffreytse/jekyll-theme-yat">Yat Theme</a>.</div>
+      <div class="footer-col rss-subscribe">Subscribe <a href="/jekyll-theme-yat/feed.xml">via RSS</a>
+</div>
+    </div>
+  </div>
+</footer>
+</body>
+</html><!-- <script type="text/x-mathjax-config">
+MathJax.Hub.Config({
+tex2jax: {
+inlineMath: [['$','$'], ['\\(','\\)']],
+processEscapes: true
+}
+});
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript"></script> -->
